@@ -18,6 +18,8 @@ namespace Hearthstone_Deck_Tracker.Utility
 		                                               + @"\Blizzard\Hearthstone\log.config";
 
 		public static Version UpdatedVersion { get; private set; }
+		public static bool LogConfigUpdated { get; set; }
+		public static bool LogConfigUpdateFailed { get; private set; } 
 
 		public static void Run()
 		{
@@ -35,7 +37,16 @@ namespace Hearthstone_Deck_Tracker.Utility
 				Config.Instance.SelectedTags.Add("All");
 
 			if(Helper.HearthstoneDirExists)
-				Helper.UpdateLogConfig = UpdateLogConfigFile();
+			{
+				try
+				{
+					LogConfigUpdated = UpdateLogConfigFile();
+				}
+				catch
+				{
+					LogConfigUpdateFailed = true;
+				}
+			}
 
 			if(!Directory.Exists(Config.Instance.DataDir))
 				Config.Instance.Reset(nameof(Config.DataDirPath));
@@ -308,6 +319,15 @@ namespace Hearthstone_Deck_Tracker.Utility
 
 				if(updated)
 				{
+					try
+					{
+						// ReSharper disable once ObjectCreationAsStatement
+						new FileInfo(LogConfigPath) {IsReadOnly = false};
+					}
+					catch(Exception e)
+					{
+						Log.Error("Could not remove read-only from log.config:\n" + e);
+					}
 					using(var sw = new StreamWriter(LogConfigPath))
 					{
 						foreach(var configItem in logConfig.Configitems)
@@ -324,14 +344,8 @@ namespace Hearthstone_Deck_Tracker.Utility
 			}
 			catch(Exception e)
 			{
-				if(Helper.UpdateLogConfig)
-				{
-					MessageBox.Show(
-					                e.Message + "\n\n" + e.InnerException
-					                + "\n\n Please manually copy the log.config from the Files directory to \"%LocalAppData%/Blizzard/Hearthstone\".",
-					                "Error writing log.config");
-					Application.Current.Shutdown();
-				}
+				Log.Error(e);
+				throw;
 			}
 			return updated;
 		}

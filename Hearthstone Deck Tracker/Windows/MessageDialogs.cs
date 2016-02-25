@@ -61,16 +61,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 			var result = await window.ShowMessageAsync("", sb.ToString(), AffirmativeAndNegativeAndSingleAuxiliary,
 							new Settings {NegativeButtonText = "open in browser", FirstAuxiliaryButtonText = "copy url to clipboard"});
 			if(result == MessageDialogResult.Negative)
-			{
-				try
-				{
-					Process.Start(url);
-				}
-				catch(Exception ex)
-				{
-					Log.Error("Error starting browser: " + ex);
-				}
-			}
+				Helper.TryOpenUrl(url);
 			else if(result == MessageDialogResult.FirstAuxiliary)
 			{
 				try
@@ -123,6 +114,16 @@ namespace Hearthstone_Deck_Tracker.Windows
 					Core.MainWindow.ShowMessage("Restart required.", "Please restart HDT for this to take effect.").Forget();
 				}
 			}
+		}
+
+		public static async Task ShowLogConfigUpdateFailedMessage(this MetroWindow window)
+		{
+			var settings = new Settings {AffirmativeButtonText = "show instructions", NegativeButtonText = "close"};
+			var result = await window.ShowMessageAsync("There was a problem updating the log.config",
+										"New log.config settings are required for HDT to function correctly.\n\nTry starting HDT as administrator.\n\nIf that does not help, click \"show instructions\" to see how to update it manually.",
+										AffirmativeAndNegative, settings);
+			if(result == MessageDialogResult.Affirmative)
+				Helper.TryOpenUrl("https://github.com/Epix37/Hearthstone-Deck-Tracker/wiki/Setting-up-the-log.config");
 		}
 
 		public static async void ShowMissingCardsMessage(this MetroWindow window, Deck deck)

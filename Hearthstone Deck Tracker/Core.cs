@@ -47,8 +47,8 @@ namespace Hearthstone_Deck_Tracker
 			Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
 			var newUser = !Directory.Exists(Config.AppDataPath);
 			Config.Load();
-			ConfigManager.Run();
 			Log.Initialize();
+			ConfigManager.Run();
 			Helper.UpdateAppTheme();
 			var splashScreenWindow = new SplashScreenWindow();
 			splashScreenWindow.ShowConditional();
@@ -93,7 +93,9 @@ namespace Hearthstone_Deck_Tracker
 
 			if(Helper.HearthstoneDirExists)
 			{
-				if(Helper.UpdateLogConfig && Game.IsRunning)
+				if(ConfigManager.LogConfigUpdateFailed)
+					MainWindow.ShowLogConfigUpdateFailedMessage().Forget();
+				else if(ConfigManager.LogConfigUpdated && Game.IsRunning)
 				{
 					MainWindow.ShowMessageAsync("Restart Hearthstone",
 					                            "This is either your first time starting HDT or the log.config file has been updated. Please restart Hearthstone, for HDT to work properly.");

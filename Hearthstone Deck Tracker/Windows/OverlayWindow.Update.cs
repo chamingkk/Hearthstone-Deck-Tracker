@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Hearthstone_Deck_Tracker.Enums;
+using Hearthstone_Deck_Tracker.Enums.Hearthstone;
 using Hearthstone_Deck_Tracker.Hearthstone;
 using Hearthstone_Deck_Tracker.Utility.BoardDamage;
 using Hearthstone_Deck_Tracker.Utility.Logging;
@@ -43,7 +44,7 @@ namespace Hearthstone_Deck_Tracker.Windows
 			var playerBoard =
 				Core.Game.Player.Board.Where(x => x.Entity.IsMinion).OrderBy(x => x.Entity.GetTag(GAME_TAG.ZONE_POSITION)).ToList();
 			UpdateMouseOverDetectionRegions(oppBoard, playerBoard);
-			if(!_game.IsInMenu && User32.IsHearthstoneInForeground())
+			if(!_game.IsInMenu && _game.IsMulliganDone && User32.IsHearthstoneInForeground())
 				DetectMouseOver(playerBoard, oppBoard);
 			else
 				FlavorTextVisibility = Collapsed;
@@ -203,7 +204,8 @@ namespace Hearthstone_Deck_Tracker.Windows
 
 		internal void UpdateTurnTimer(TimerEventArgs timerEventArgs)
 		{
-			if (!timerEventArgs.Running || (timerEventArgs.PlayerSeconds <= 0 && timerEventArgs.OpponentSeconds <= 0))
+			if(!timerEventArgs.Running || (timerEventArgs.PlayerSeconds <= 0 && timerEventArgs.OpponentSeconds <= 0) 
+				|| _game.CurrentMode != Mode.GAMEPLAY)
 				return;
 
 			ShowTimers();
