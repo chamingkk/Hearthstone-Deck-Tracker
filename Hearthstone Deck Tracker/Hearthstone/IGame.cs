@@ -3,6 +3,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Hearthstone_Deck_Tracker.Enums;
+using Hearthstone_Deck_Tracker.Enums.Hearthstone;
 using Hearthstone_Deck_Tracker.Hearthstone.Entities;
 using Hearthstone_Deck_Tracker.Stats;
 
@@ -32,6 +33,9 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		Dictionary<int, Entity> Entities { get; set; }
 		bool SavedReplay { get; set; }
 		GameMetaData MetaData { get; }
+		Mode CurrentMode { get; set; }
+		Mode PreviousMode { get; set; }
+		GameTime GameTime { get; }
 		void Reset(bool resetStats = true);
 		void SetPremadeDeck(Deck deck);
 		void AddPlayToCurrentGame(PlayType play, int turn, string cardId);
@@ -40,5 +44,6 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		void NewArenaDeck(string heroId);
 		void NewArenaCard(string cardId);
 		Task GameModeDetection(int timeout);
+		void StorePowerLog();
 	}
 }

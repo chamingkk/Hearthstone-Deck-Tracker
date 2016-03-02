@@ -31,6 +31,9 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(true)]
 		public bool AdditionalOverlayTooltips = true;
 
+		[DefaultValue(false)]
+		public bool AdvancedOptions = false;
+
 		[DefaultValue(true)]
 		public bool AlwaysOverwriteLogConfig = true;
 
@@ -42,6 +45,9 @@ namespace Hearthstone_Deck_Tracker
 
 		[DefaultValue(false)]
 		public bool AlwaysShowGoldProgress = false;
+
+		[DefaultValue(true)]
+		public bool ArenaSummaryChartsExpanded = true;
 
 		[DefaultValue(DisplayedTimeFrame.AllTime)]
 		public DisplayedTimeFrame ArenaStatsTimeFrameFilter = DisplayedTimeFrame.AllTime;

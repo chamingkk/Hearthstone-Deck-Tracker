@@ -152,6 +152,8 @@ namespace Hearthstone_Deck_Tracker
 
 			SaveAndUpdateStats();
 
+			_game.StoredPowerLogs.Clear();
+
 			if(_arenaRewardDialog != null)
 			{
 				_arenaRewardDialog.Show();
@@ -214,20 +216,6 @@ namespace Hearthstone_Deck_Tracker
 			_game.OpponentSecrets.SetZero(Hunter.Snipe);
 			_game.OpponentSecrets.SetZero(Mage.MirrorEntity);
 			_game.OpponentSecrets.SetZero(Paladin.Repentance);
-
-			if(Core.MainWindow != null)
-				Core.Overlay.ShowSecrets();
-		}
-
-		public void HandlePlayerSpellPlayed(bool isMinionTargeted)
-		{
-			if(!Config.Instance.AutoGrayoutSecrets)
-				return;
-
-			_game.OpponentSecrets.SetZero(Mage.Counterspell);
-
-			if(isMinionTargeted)
-				_game.OpponentSecrets.SetZero(Mage.Spellbender);
 
 			if(Core.MainWindow != null)
 				Core.Overlay.ShowSecrets();
@@ -436,20 +424,41 @@ namespace Hearthstone_Deck_Tracker
 				Core.Overlay.ShowOverlay(false);
 				reEnableOverlay = true;
 			}
-			while(await Helper.FriendsListOpen())
+			if(await Helper.FriendsListOpen())
 			{
-				//silently wait for friendslist to close
-				if(_rankDetectionTries >= MaxRankDetectionTries)
-					await Task.Delay(300);
-				else
-					Core.Overlay.ShowFriendsListWarning(true);
+				Log.Info("Waiting for friendslist to close...");
+				do
+				{
+					if(_rankDetectionTries >= MaxRankDetectionTries)
+						await Task.Delay(300);
+					else
+						Core.Overlay.ShowFriendsListWarning(true);
+				} while(await Helper.FriendsListOpen());
 			}
 			Core.Overlay.ShowFriendsListWarning(false);
-			var capture = await Helper.CaptureHearthstoneAsync(new Point(0, 0), rect.Width, rect.Height);
+			var capture = await ScreenCapture.CaptureHearthstoneAsync(new Point(0, 0), rect.Width, rect.Height);
 			if(reEnableOverlay)
 				Core.Overlay.ShowOverlay(true);
+			var success = await FindRanks(capture);
+			if(!success && !Config.Instance.AlternativeScreenCapture && _rankDetectionTries < 3)
+			{
+				Log.Info("ScreenCapture rank detection failed. Trying window capture.");
+				capture = await ScreenCapture.CaptureHearthstoneAsync(new Point(0, 0), rect.Width, rect.Height, altScreenCapture: true);
+				success = await FindRanks(capture);
+				if(success)
+				{
 
-			// try to detect rank
+					Log.Info("WindowCapture rank detection was successful! Setting AlternativeScreenCapture=true.");
+					Config.Instance.AlternativeScreenCapture = true;
+					Config.Save();
+				}
+			}
+			_rankDetectionTries++;
+			_rankDetectionRunning = false;
+		}
+
+		private async Task<bool> FindRanks(Bitmap capture)
+		{
 			var match = await RankDetection.Match(capture);
 			if(match.Success)
 			{
@@ -462,8 +471,9 @@ namespace Hearthstone_Deck_Tracker
 					if(match.Opponent >= 0)
 						_game.CurrentGameStats.OpponentRank = match.Opponent;
 				}
+				return true;
 			}
-			else if(match.OpponentSuccess)
+			if(match.OpponentSuccess)
 			{
 				Log.Info($"Player rank detection failed. Using opponent rank instead. Player={match.Player}, Opponent={match.Opponent}");
 				SetGameMode(Ranked);
@@ -472,11 +482,10 @@ namespace Hearthstone_Deck_Tracker
 					_game.CurrentGameStats.GameMode = Ranked;
 					_game.CurrentGameStats.Rank = match.Opponent;
 				}
+				return true;
 			}
-			else
-				Log.Info("No ranks were detected.");
-			_rankDetectionTries++;
-			_rankDetectionRunning = false;
+			Log.Info("No ranks were detected.");
+			return false;
 		}
 
 		public async void HandleAvengeAsync(int deathRattleCount)
@@ -975,7 +984,26 @@ namespace Hearthstone_Deck_Tracker
 			_game.AddPlayToCurrentGame(PlayType.PlayerPlay, turn, cardId);
 			GameEvents.OnPlayerPlay.Execute(Database.GetCardFromId(cardId));
 
-			if(Config.Instance.AutoGrayoutSecrets && entity.IsMinion && _game.PlayerMinionCount > 3)
+			HandleSecretsOnPlay(entity);
+		}
+
+		public async void HandleSecretsOnPlay(Entity entity)
+		{
+			if(!Config.Instance.AutoGrayoutSecrets)
+				return;
+			if(entity.IsSpell)
+			{
+				_game.OpponentSecrets.SetZero(Mage.Counterspell);
+
+				//CARD_TARGET is set after ZONE, wait for 50ms gametime before checking
+				await _game.GameTime.WaitForDuration(50);
+				if(entity.HasTag(CARD_TARGET) && _game.Entities[entity.GetTag(CARD_TARGET)].IsMinion)
+					_game.OpponentSecrets.SetZero(Mage.Spellbender);
+
+				if(Core.MainWindow != null)
+					Core.Overlay.ShowSecrets();
+			}
+			else if(entity.IsMinion && _game.PlayerMinionCount > 3)
 			{
 				_game.OpponentSecrets.SetZero(Paladin.SacredTrial);
 

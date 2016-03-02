@@ -1,10 +1,14 @@
 ﻿#region
 
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
+using Hearthstone_Deck_Tracker.Annotations;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 using Hearthstone_Deck_Tracker.Windows;
 using MahApps.Metro.Controls.Dialogs;
@@ -15,9 +19,11 @@ namespace Hearthstone_Deck_Tracker.Utility
 {
 	public static class Updater
 	{
+		private static Version _newVersion;
 		private static DateTime _lastUpdateCheck;
 		private static bool _showingUpdateMessage;
 		private static bool TempUpdateCheckDisabled { get; set; }
+		public static StatusBarHelper StatusBar { get; } = new StatusBarHelper();
 
 		public static async void CheckForUpdates(bool force = false)
 		{
@@ -28,26 +34,25 @@ namespace Hearthstone_Deck_Tracker.Utility
 					return;
 			}
 			_lastUpdateCheck = DateTime.Now;
-			var newVersion = await Helper.CheckForUpdates(false);
-			if(newVersion != null)
-				ShowNewUpdateMessage(newVersion, false);
+			_newVersion = await GetLatestVersion(false);
+			if(_newVersion != null)
+				ShowNewUpdateMessage(false);
 			else if(Config.Instance.CheckForBetaUpdates)
 			{
-				newVersion = await Helper.CheckForUpdates(true);
-				if(newVersion != null)
-					ShowNewUpdateMessage(newVersion, true);
+				_newVersion = await GetLatestVersion(true);
+				if(_newVersion != null)
+					ShowNewUpdateMessage(true);
 			}
 		}
 
-		private static async void ShowNewUpdateMessage(Version newVersion, bool beta)
+		private static async void ShowNewUpdateMessage(bool beta)
 		{
 			if(_showingUpdateMessage)
 				return;
 			_showingUpdateMessage = true;
-
-			const string releaseDownloadUrl = @"https://github.com/Epix37/Hearthstone-Deck-Tracker/releases";
+			
 			var settings = new MessageDialogs.Settings {AffirmativeButtonText = "Download", NegativeButtonText = "Not now"};
-			if(newVersion == null)
+			if(_newVersion == null)
 			{
 				_showingUpdateMessage = false;
 				return;
@@ -58,7 +63,6 @@ namespace Hearthstone_Deck_Tracker.Utility
 				Core.MainWindow.ActivateWindow();
 				while(Core.MainWindow.Visibility != Visibility.Visible || Core.MainWindow.WindowState == WindowState.Minimized)
 					await Task.Delay(100);
-				var newVersionString = $"{newVersion.Major}.{newVersion.Minor}.{newVersion.Build}";
 				var betaString = beta ? " BETA" : "";
 				var result =
 					await
@@ -66,28 +70,12 @@ namespace Hearthstone_Deck_Tracker.Utility
 					                                 MessageDialogStyle.AffirmativeAndNegative, settings);
 
 				if(result == MessageDialogResult.Affirmative)
-				{
-					//recheck, in case there was no immediate response to the dialog
-					if((DateTime.Now - _lastUpdateCheck) > new TimeSpan(0, 10, 0))
-					{
-						newVersion = await Helper.CheckForUpdates(beta);
-						if(newVersion != null)
-							newVersionString = $"{newVersion.Major}.{newVersion.Minor}.{newVersion.Build}";
-					}
-					try
-					{
-						Process.Start("HDTUpdate.exe", $"{Process.GetCurrentProcess().Id} {newVersionString}");
-						Core.MainWindow.Close();
-						Application.Current.Shutdown();
-					}
-					catch(Exception ex)
-					{
-						Log.Error("Error starting updater\n" + ex);
-						Process.Start(releaseDownloadUrl);
-					}
-				}
+					StartUpdate();
 				else
+				{
 					TempUpdateCheckDisabled = true;
+					StatusBar.Visibility = Visibility.Visible;
+				}
 
 				_showingUpdateMessage = false;
 			}
@@ -95,6 +83,29 @@ namespace Hearthstone_Deck_Tracker.Utility
 			{
 				_showingUpdateMessage = false;
 				Log.Error("Error showing new update message\n" + e);
+			}
+		}
+
+		internal static async void StartUpdate()
+		{
+			Log.Info("Starting update...");
+			if(_newVersion == null || (DateTime.Now - _lastUpdateCheck) > new TimeSpan(0, 10, 0))
+				_newVersion = await GetLatestVersion(Config.Instance.CheckForBetaUpdates);
+			if(_newVersion == null)
+			{
+				Log.Error("Could not get latest version. Not updating.");
+				return;
+			}
+			try
+			{
+				Process.Start("HDTUpdate.exe", $"{Process.GetCurrentProcess().Id} {_newVersion.Major}.{_newVersion.Minor}.{_newVersion.Build}");
+				Core.MainWindow.Close();
+				Application.Current.Shutdown();
+			}
+			catch(Exception ex)
+			{
+				Log.Error("Error starting updater\n" + ex);
+				Helper.TryOpenUrl(@"https://github.com/Epix37/Hearthstone-Deck-Tracker/releases");
 			}
 		}
 
@@ -123,6 +134,55 @@ namespace Hearthstone_Deck_Tracker.Utility
 			{
 				Log.Error("Error deleting Updater.exe\n" + e);
 			}
+		}
+
+		public static async Task<Version> GetLatestVersion(bool beta)
+		{
+			var betaString = beta ? "beta" : "live";
+			var currentVersion = Helper.GetCurrentVersion();
+			if(currentVersion == null)
+				return null;
+			Log.Info($"Checking for {betaString} updates... (current: {currentVersion})");
+			try
+			{
+				string xml;
+				using(var wc = new WebClient())
+					xml = await wc.DownloadStringTaskAsync($"https://raw.githubusercontent.com/Epix37/HDT-Data/master/{betaString}-version");
+
+				var newVersion = new Version(XmlManager<SerializableVersion>.LoadFromString(xml).ToString());
+				Log.Info("Latest " + betaString + " version: " + newVersion);
+
+				if(newVersion > currentVersion)
+					return newVersion;
+			}
+			catch(Exception e)
+			{
+				Log.Error(e);
+			}
+			return null;
+		}
+	}
+
+	public class StatusBarHelper : INotifyPropertyChanged
+	{
+		private Visibility _visibility = Visibility.Collapsed;
+
+		public Visibility Visibility
+		{
+			get { return _visibility; }
+			set
+			{
+				_visibility = value;
+				OnPropertyChanged();
+			}
+		}
+
+		public event PropertyChangedEventHandler PropertyChanged;
+
+		[NotifyPropertyChangedInvocator]
+		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+		{
+			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 		}
 	}
 }

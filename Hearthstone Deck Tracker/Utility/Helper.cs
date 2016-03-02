@@ -8,22 +8,21 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
-using System.Net;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
-using System.Windows.Forms;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Hearthstone_Deck_Tracker.Controls;
 using Hearthstone_Deck_Tracker.Enums;
 using Hearthstone_Deck_Tracker.FlyoutControls;
 using Hearthstone_Deck_Tracker.Hearthstone;
+using Hearthstone_Deck_Tracker.Utility;
 using Hearthstone_Deck_Tracker.Utility.Extensions;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 using Hearthstone_Deck_Tracker.Windows;
@@ -35,12 +34,9 @@ using Application = System.Windows.Application;
 using Card = Hearthstone_Deck_Tracker.Hearthstone.Card;
 using Color = System.Drawing.Color;
 using MediaColor = System.Windows.Media.Color;
-using MessageBox = System.Windows.MessageBox;
-using PixelFormat = System.Drawing.Imaging.PixelFormat;
 using Point = System.Drawing.Point;
 using Region = Hearthstone_Deck_Tracker.Enums.Region;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
-using Size = System.Drawing.Size;
 
 #endregion
 
@@ -121,13 +117,11 @@ namespace Hearthstone_Deck_Tracker
 		};
 
 
-		[Obsolete("Use Core.MainWindow", true)]
+		[Obsolete("Use API.Core.MainWindow", true)]
 		public static MainWindow MainWindow => Core.MainWindow;
 
 		public static OptionsMain OptionsMain { get; set; }
 		public static bool SettingUpConstructedImporting { get; set; }
-
-		public static Visibility UseButtonVisiblity => Config.Instance.AutoUseDeck ? Visibility.Collapsed : Visibility.Visible;
 
 		public static bool HearthstoneDirExists
 		{
@@ -137,40 +131,6 @@ namespace Hearthstone_Deck_Tracker
 					_hearthstoneDirExists = FindHearthstoneDir();
 				return _hearthstoneDirExists.Value;
 			}
-		}
-
-		public static bool UpdateLogConfig { get; set; }
-
-		public static async Task<Version> CheckForUpdates(bool beta)
-		{
-			var betaString = beta ? "BETA" : "LIVE";
-			Log.Info("Checking for " + betaString + " updates...");
-
-			var versionXmlUrl = beta
-									? @"https://raw.githubusercontent.com/Epix37/HDT-Data/master/beta-version"
-									: @"https://raw.githubusercontent.com/Epix37/HDT-Data/master/live-version";
-
-			var currentVersion = GetCurrentVersion();
-			if(currentVersion == null)
-				return null;
-			try
-			{
-				Log.Info("Current version: " + currentVersion);
-				string xml;
-				using(var wc = new WebClient())
-					xml = await wc.DownloadStringTaskAsync(versionXmlUrl);
-
-				var newVersion = new Version(XmlManager<SerializableVersion>.LoadFromString(xml).ToString());
-				Log.Info("Latest " + betaString + " version: " + newVersion);
-
-				if(newVersion > currentVersion)
-					return newVersion;
-			}
-			catch(Exception e)
-			{
-				Log.Error(e);
-			}
-			return null;
 		}
 
 		// A bug in the SerializableVersion.ToString() method causes this to load Version.xml incorrectly.
@@ -187,8 +147,6 @@ namespace Hearthstone_Deck_Tracker
 				return null;
 			}
 		}
-
-		public static string ToVersionString(this Version version) => $"{version?.Major}.{version?.Minor}.{version?.Build}";
 
 		public static bool IsNumeric(char c)
 		{
@@ -282,75 +240,24 @@ namespace Hearthstone_Deck_Tracker
 			view1.SortDescriptions.Add(new SortDescription(nameof(Card.LocalizedName), ListSortDirection.Ascending));
 		}
 
-		public static List<Card> ToSortedCardList(this IEnumerable<Card> cards)
-			=> cards.OrderBy(x => x.Cost).ThenByDescending(x => x.Type).ThenBy(x => x.LocalizedName).ToArray().ToList();
 
 		public static string DeckToIdString(Deck deck)
 			=> deck.GetSelectedDeckVersion().Cards.Aggregate("", (current, card) => current + (card.Id + ":" + card.Count + ";"));
 
+		[Obsolete("Use Utility.ScreenCapture.CaptureHearthstone", true)]
 		public static Bitmap CaptureHearthstone(Point point, int width, int height, IntPtr wndHandle = default(IntPtr),
 												bool requireInForeground = true) => CaptureHearthstoneAsync(point, width, height, wndHandle, requireInForeground).Result;
 
+		[Obsolete("Use Utility.ScreenCapture.CaptureHearthstoneAsync", true)]
 		public static async Task<Bitmap> CaptureHearthstoneAsync(Point point, int width, int height, IntPtr wndHandle = default(IntPtr),
 																 bool requireInForeground = true, bool? altScreenCapture = null)
-		{
-			if(wndHandle == default(IntPtr))
-				wndHandle = User32.GetHearthstoneWindow();
+			=> await ScreenCapture.CaptureHearthstoneAsync(point, width, height, wndHandle, requireInForeground, altScreenCapture);
 
-			if(requireInForeground && !User32.IsHearthstoneInForeground())
-				return null;
+		[Obsolete("Use Utility.ScreenCapture.CaptureWindow", true)]
+		public static Bitmap CaptureWindow(IntPtr wndHandle, Point point, int width, int height) => ScreenCapture.CaptureWindow(wndHandle, point, width, height);
 
-			try
-			{
-				if(altScreenCapture ?? Config.Instance.AlternativeScreenCapture)
-					return await Task.Run(() => CaptureWindow(wndHandle, point, width, height));
-				return await Task.Run(() => CaptureScreen(wndHandle, point, width, height));
-			}
-			catch(Exception ex)
-			{
-				Log.Error(ex);
-				return null;
-			}
-		}
-
-		public static Bitmap CaptureWindow(IntPtr wndHandle, Point point, int width, int height)
-		{
-			User32.Rect windowRect;
-			User32.GetWindowRect(wndHandle, out windowRect);
-			var windowWidth = windowRect.right - windowRect.left;
-			var windowHeight = windowRect.bottom - windowRect.top;
-			var bmp = new Bitmap(windowWidth, windowHeight, PixelFormat.Format32bppArgb);
-			using(var graphics = Graphics.FromImage(bmp))
-			{
-				var hdc = graphics.GetHdc();
-				
-				try
-				{
-					User32.PrintWindow(wndHandle, hdc, 0);
-				}
-				finally
-				{
-					graphics.ReleaseHdc(hdc);
-				}
-			}
-			var cRect = new User32.Rect();
-			User32.GetClientRect(wndHandle, ref cRect);
-			var cWidth = cRect.right - cRect.left;
-			var cHeight = cRect.bottom - cRect.top;
-			var captionHeight = windowHeight - cHeight > 0 ? SystemInformation.CaptionHeight : 0;
-			return bmp.Clone(new Rectangle((windowWidth - cWidth) / 2 + point.X, 
-				(windowHeight - cHeight - captionHeight) / 2 + captionHeight + point.Y,
-				width, height), PixelFormat.Format32bppArgb);
-		}
-
-		public static Bitmap CaptureScreen(IntPtr wndHandle, Point point, int width, int height)
-		{
-			User32.ClientToScreen(wndHandle, ref point);
-			var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-			var graphics = Graphics.FromImage(bmp);
-			graphics.CopyFromScreen(point.X, point.Y, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
-			return bmp;
-		}
+		[Obsolete("Use Utility.ScreenCapture.CaptureScreen", true)]
+		public static Bitmap CaptureScreen(IntPtr wndHandle, Point point, int width, int height) => ScreenCapture.CaptureScreen(wndHandle, point, width, height);
 
 		public static async Task<bool> FriendsListOpen()
 		{
@@ -358,7 +265,7 @@ namespace Hearthstone_Deck_Tracker
 			await Task.Delay(300);
 
 			var rect = User32.GetHearthstoneRect(false);
-			var capture = await CaptureHearthstoneAsync(new Point(0, (int)(rect.Height * 0.85)), (int)(rect.Width * 0.1), (int)(rect.Height * 0.15));
+			var capture = await ScreenCapture.CaptureHearthstoneAsync(new Point(0, (int)(rect.Height * 0.85)), (int)(rect.Width * 0.1), (int)(rect.Height * 0.15));
 			if(capture == null)
 				return false;
 
@@ -377,10 +284,7 @@ namespace Hearthstone_Deck_Tracker
 							foundFriendsList = false;
 					}
 					if(foundFriendsList)
-					{
-						Log.Info("Found Friendslist");
 						return true;
-					}
 				}
 			}
 			return false;
@@ -471,12 +375,6 @@ namespace Hearthstone_Deck_Tracker
 			}
 		}
 
-		public static long ToUnixTime(this DateTime time)
-		{
-			var total = (long)(time.ToUniversalTime() - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
-			return total < 0 ? 0 : total;
-		}
-
 		public static DateTime FromUnixTime(long unixTime)
 			=> new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).Add(TimeSpan.FromSeconds(unixTime)).ToLocalTime();
 
@@ -530,27 +428,6 @@ namespace Hearthstone_Deck_Tracker
 			}
 		}
 
-		//http://stackoverflow.com/questions/14795197/forcefully-replacing-existing-files-during-extracting-file-using-system-io-compr
-		public static void ExtractToDirectory(this ZipArchive archive, string destinationDirectoryName, bool overwrite)
-		{
-			if(!overwrite)
-			{
-				archive.ExtractToDirectory(destinationDirectoryName);
-				return;
-			}
-			foreach(var file in archive.Entries)
-			{
-				var completeFileName = Path.Combine(destinationDirectoryName, file.FullName);
-				if(file.Name == "")
-				{
-					// Assuming Empty for Directory
-					Directory.CreateDirectory(Path.GetDirectoryName(completeFileName));
-					continue;
-				}
-				file.ExtractToFile(completeFileName, true);
-			}
-		}
-
 		public static void UpdatePlayerCards()
 		{
 			Core.Overlay.UpdatePlayerCards();
@@ -562,7 +439,6 @@ namespace Hearthstone_Deck_Tracker
 			Core.Overlay.UpdateOpponentCards();
 			Core.Windows.OpponentWindow.UpdateOpponentCards();
 		}
-
 
 		public static async Task StartHearthstoneAsync()
 		{
@@ -815,15 +691,18 @@ namespace Hearthstone_Deck_Tracker
 			}
 		}
 
-		public static void TryOpenUrl(string url)
+		public static bool TryOpenUrl(string url, [CallerMemberName] string memberName = "", [CallerFilePath] string sourceFilePath = "")
 		{
 			try
 			{
+				Log.Info("[Helper.TryOpenUrl] " + url, memberName, sourceFilePath);
 				Process.Start(url);
+				return true;
 			}
 			catch(Exception e)
 			{
-				Log.Error(e);
+				Log.Error("[Helper.TryOpenUrl] " + e, memberName, sourceFilePath);
+				return false;
 			}
 		}
 
@@ -831,6 +710,37 @@ namespace Hearthstone_Deck_Tracker
 		{
 			var exe = Path.Combine(Config.Instance.HearthstoneDirectory, "Hearthstone.exe");
 			return !File.Exists(exe) ? (int?)null : FileVersionInfo.GetVersionInfo(exe).FilePrivatePart;
+		}
+
+		public static IEnumerable<T> FindVisualChildren<T>(DependencyObject depObj) where T : DependencyObject
+		{
+			if(depObj == null)
+				yield break;
+			for(var i = 0; i < VisualTreeHelper.GetChildrenCount(depObj); i++)
+			{
+				var child = VisualTreeHelper.GetChild(depObj, i) as T;
+				if(child != null)
+					yield return child;
+				foreach(var childOfChild in FindVisualChildren<T>(child))
+					yield return childOfChild;
+			}
+		}
+
+		public static IEnumerable<T> FindLogicalChildren<T>(DependencyObject depObj) where T : DependencyObject
+		{
+			if(depObj == null)
+				yield break;
+			foreach(var child in LogicalTreeHelper.GetChildren(depObj))
+			{
+				var obj = child as T;
+				if(obj != null)
+					yield return obj;
+				var childDepObj = child as DependencyObject;
+				if(childDepObj == null)
+					continue;
+				foreach(var childOfChild in FindLogicalChildren<T>(childDepObj))
+					yield return childOfChild;
+			}
 		}
 	}
 }

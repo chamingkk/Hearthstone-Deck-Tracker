@@ -3,15 +3,12 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Xml.Serialization;
 using HearthDb.Enums;
-using Hearthstone_Deck_Tracker.Utility;
 using Hearthstone_Deck_Tracker.Windows;
 using Rarity = Hearthstone_Deck_Tracker.Enums.Rarity;
 
@@ -105,7 +102,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 				if(_selectedLanguage.HasValue)
 					return _selectedLanguage.Value;
 				Language lang;
-				if (!Enum.TryParse(Config.Instance.SelectedLanguage, out lang))
+				if(!Enum.TryParse(Config.Instance.SelectedLanguage, out lang))
 					lang = Language.enUS;
 				_selectedLanguage = lang;
 				return _selectedLanguage.Value;
@@ -166,60 +163,38 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		[XmlIgnore]
 		public string Text
 		{
-			get { return _text; }
-			set
-			{
-				_text = value?.Replace("<b>", "")
-							  .Replace("</b>", "")
-							  .Replace("<i>", "")
-							  .Replace("</i>", "")
-							  .Replace("$", "")
-							  .Replace("#", "")
-							  .Replace("\\n", "\n");
-			}
+			get { return CleanUpText(_text); }
+			set { _text = value; }
 		}
+
+		[XmlIgnore]
+		public string FormattedText => CleanUpText(_text, false) ?? "";
 
 		[XmlIgnore]
 		public string EnglishText
 		{
-			get { return string.IsNullOrEmpty(_englishText) ? Text : _englishText; }
-			set
-			{
-				_englishText = value?.Replace("<b>", "")
-									 .Replace("</b>", "")
-									 .Replace("<i>", "")
-									 .Replace("</i>", "")
-									 .Replace("$", "")
-									 .Replace("#", "")
-									 .Replace("\\n", "\n");
-			}
+			get { return CleanUpText(string.IsNullOrEmpty(_englishText) ? Text : _englishText); }
+			set { _englishText =value; }
 		}
 
 		[XmlIgnore]
-		public string AlternativeLanguageText
+		public string AlternativeLanguageText => GetAlternativeText(false);
+
+		[XmlIgnore]
+		public string FormattedAlternativeLanguageText => GetAlternativeText(true);
+
+		private string GetAlternativeText(bool formatted)
 		{
-			get
+			var result = "";
+			for(var i = 0; i < AlternativeNames.Count; ++i)
 			{
-				var result = "";
-				for(var i = 0; i < AlternativeNames.Count; ++i)
-				{
-					if(i > 0)
-						result += "-\n";
-					result += "[" + AlternativeNames[i] + "]\n";
-					if(AlternativeTexts[i] != null)
-					{
-						result +=
-							AlternativeTexts[i].Replace("<b>", "")
-							                   .Replace("</b>", "")
-							                   .Replace("<i>", "")
-							                   .Replace("</i>", "")
-							                   .Replace("$", "")
-							                   .Replace("#", "")
-							                   .Replace("\\n", "\n") + "\n";
-					}
-				}
-				return result.TrimEnd(' ', '\n');
+				if(i > 0)
+					result += "-\n";
+				result += "[" + AlternativeNames[i] + "]\n";
+				if(AlternativeTexts[i] != null)
+					result += CleanUpText(AlternativeTexts[i], !formatted) + "\n";
 			}
+			return result.TrimEnd(' ', '\n');
 		}
 
 		[XmlIgnore]
@@ -382,13 +357,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 
 		public SolidColorBrush ColorOpponent => new SolidColorBrush(Colors.White);
 
-		public string CardFileName => Name.ToLowerInvariant()
-										  .Replace(' ', '-')
-										  .Replace(":", "")
-										  .Replace("'", "-")
-										  .Replace(".", "")
-										  .Replace("!", "")
-										  .Replace(",", "");
+		public string CardFileName => Name.ToLowerInvariant().Replace(' ', '-').Replace(":", "").Replace("'", "-").Replace(".", "").Replace("!", "").Replace(",", "");
 
 		public FontFamily Font
 		{
@@ -434,9 +403,12 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		public bool HighlightInHand { get; set; }
 
 		[XmlIgnore]
-		public string FlavorText => _dbCard.GetLocFlavorText(SelectedLanguage);
+		public string FlavorText => CleanUpText(_dbCard?.GetLocFlavorText(SelectedLanguage)) ?? "";
+		
+		[XmlIgnore]
+		public string FormattedFlavorText => CleanUpText(_dbCard?.GetLocFlavorText(SelectedLanguage), false) ?? "";
 
-		public object Clone() => new Card(Id, PlayerClass, Rarity, Type, Name, Cost, LocalizedName, InHandCount, Count, Text, EnglishText, Attack,
+		public object Clone() => new Card(Id, PlayerClass, Rarity, Type, Name, Cost, LocalizedName, InHandCount, Count, _text, EnglishText, Attack,
 										  Health, Race, Mechanics, Durability, Artist, Set, AlternativeNames, AlternativeTexts);
 
 		public event PropertyChangedEventHandler PropertyChanged;
@@ -468,7 +440,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			Cost = stats.Cost;
 			LocalizedName = stats.LocalizedName;
 			InHandCount = stats.InHandCount;
-			Text = stats.Text;
+			Text = stats._text;
 			EnglishText = stats.EnglishText;
 			Attack = stats.Attack;
 			Health = stats.Health;
@@ -486,6 +458,13 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
 		{
 			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+		}
+
+		private static string CleanUpText(string text, bool replaceTags = true)
+		{
+			if (replaceTags)
+				text = text?.Replace("<b>", "").Replace("</b>", "").Replace("<i>", "").Replace("</i>", "");
+			return text?.Replace("$", "").Replace("#", "").Replace("\\n", "\n");
 		}
 	}
 }

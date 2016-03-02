@@ -23,6 +23,7 @@ namespace Hearthstone_Deck_Tracker.LogReader
 		private long _offset;
 		private bool _running;
 		private DateTime _startingPoint;
+		private bool _logFileExists;
 
 
 		private bool _stop;
@@ -47,6 +48,7 @@ namespace Hearthstone_Deck_Tracker.LogReader
 			_startingPoint = startingPoint;
 			_stop = false;
 			_offset = 0;
+			_logFileExists = false;
 			_thread = new Thread(ReadLogFile) {IsBackground = true};
 			_thread.Start();
 		}
@@ -89,7 +91,7 @@ namespace Hearthstone_Deck_Tracker.LogReader
 		{
 			Log.Debug("Stopping " + Info.Name);
 			_stop = true;
-			while(_running)
+			while(_running || _thread == null || _thread.ThreadState == ThreadState.Unstarted)
 				await Task.Delay(50);
 			await Task.Factory.StartNew(() => _thread?.Join());
 			Log.Debug(Info.Name + " stopped.");
@@ -120,6 +122,11 @@ namespace Hearthstone_Deck_Tracker.LogReader
 					var fileInfo = new FileInfo(_filePath);
 					if(fileInfo.Exists)
 					{
+						if(!_logFileExists)
+						{
+							_logFileExists = true;
+							Log.Info($"Found {Info.Name}.log.");
+						}
 						using(var fs = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
 						{
 							fs.Seek(_offset, SeekOrigin.Begin);
