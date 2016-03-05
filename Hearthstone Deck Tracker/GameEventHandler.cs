@@ -152,6 +152,8 @@ namespace Hearthstone_Deck_Tracker
 
 			SaveAndUpdateStats();
 
+			_game.StoredPowerLogs.Clear();
+
 			if(_arenaRewardDialog != null)
 			{
 				_arenaRewardDialog.Show();
@@ -214,20 +216,6 @@ namespace Hearthstone_Deck_Tracker
 			_game.OpponentSecrets.SetZero(Hunter.Snipe);
 			_game.OpponentSecrets.SetZero(Mage.MirrorEntity);
 			_game.OpponentSecrets.SetZero(Paladin.Repentance);
-
-			if(Core.MainWindow != null)
-				Core.Overlay.ShowSecrets();
-		}
-
-		public void HandlePlayerSpellPlayed(bool isMinionTargeted)
-		{
-			if(!Config.Instance.AutoGrayoutSecrets)
-				return;
-
-			_game.OpponentSecrets.SetZero(Mage.Counterspell);
-
-			if(isMinionTargeted)
-				_game.OpponentSecrets.SetZero(Mage.Spellbender);
 
 			if(Core.MainWindow != null)
 				Core.Overlay.ShowSecrets();
@@ -996,7 +984,26 @@ namespace Hearthstone_Deck_Tracker
 			_game.AddPlayToCurrentGame(PlayType.PlayerPlay, turn, cardId);
 			GameEvents.OnPlayerPlay.Execute(Database.GetCardFromId(cardId));
 
-			if(Config.Instance.AutoGrayoutSecrets && entity.IsMinion && _game.PlayerMinionCount > 3)
+			HandleSecretsOnPlay(entity);
+		}
+
+		public async void HandleSecretsOnPlay(Entity entity)
+		{
+			if(!Config.Instance.AutoGrayoutSecrets)
+				return;
+			if(entity.IsSpell)
+			{
+				_game.OpponentSecrets.SetZero(Mage.Counterspell);
+
+				//CARD_TARGET is set after ZONE, wait for 50ms gametime before checking
+				await _game.GameTime.WaitForDuration(50);
+				if(entity.HasTag(CARD_TARGET) && _game.Entities[entity.GetTag(CARD_TARGET)].IsMinion)
+					_game.OpponentSecrets.SetZero(Mage.Spellbender);
+
+				if(Core.MainWindow != null)
+					Core.Overlay.ShowSecrets();
+			}
+			else if(entity.IsMinion && _game.PlayerMinionCount > 3)
 			{
 				_game.OpponentSecrets.SetZero(Paladin.SacredTrial);
 
