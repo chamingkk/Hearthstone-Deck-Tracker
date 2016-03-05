@@ -42,6 +42,8 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 					game.Entities.Add(id, new Entity(id));
 				gameState.CurrentEntityId = id;
 				setup = true;
+				if(gameState.WasInProgress)
+					game.Entities[id].Name = game.GetStoredPlayerName(id);
 			}
 			else if(TagChangeRegex.IsMatch(logLine))
 			{
@@ -62,13 +64,16 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 
 					if(entity.Value == null)
 					{
-						entity = game.Entities.FirstOrDefault(x => x.Value.Name == "UNKNOWN HUMAN PLAYER");
-						if(entity.Value != null)
-							entity.Value.Name = rawEntity;
-					}
+						var players = game.Entities.Where(x => x.Value.HasTag(GAME_TAG.PLAYER_ID)).Take(2).ToList();
+						var unnamedPlayers = players.Where(x => string.IsNullOrEmpty(x.Value.Name)).ToList();
+						var unknownHumanPlayer = players.FirstOrDefault(x => x.Value.Name == "UNKNOWN HUMAN PLAYER");
+						if(unnamedPlayers.Count == 0 && unknownHumanPlayer.Value != null)
+						{
+							Log.Info("Updating UNKNOWN HUMAN PLAYER");
+							entity = unknownHumanPlayer;
+							SetPlayerName(game, entity.Value.GetTag(GAME_TAG.PLAYER_ID), rawEntity);
+						}
 
-					if(entity.Value == null)
-					{
 						//while the id is unknown, store in tmp entities
 						var tmpEntity = _tmpEntities.FirstOrDefault(x => x.Name == rawEntity);
 						if(tmpEntity == null)
@@ -79,7 +84,6 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 						GAME_TAG tag;
 						Enum.TryParse(match.Groups["tag"].Value, out tag);
 						var value = LogReaderHelper.ParseTagValue(tag, match.Groups["value"].Value);
-						var unnamedPlayers = game.Entities.Where(x => x.Value.HasTag(GAME_TAG.PLAYER_ID) && string.IsNullOrEmpty(x.Value.Name)).ToList();
 						if(unnamedPlayers.Count == 1)
 							entity = unnamedPlayers.Single();
 						else if(unnamedPlayers.Count == 2 && tag == GAME_TAG.CURRENT_PLAYER && value == 0)
@@ -88,7 +92,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 						{
 							entity.Value.Name = tmpEntity.Name;
 							foreach(var t in tmpEntity.Tags)
-								entity.Value.SetTag(t.Key, t.Value);
+								_tagChangeHandler.TagChange(gameState, t.Key, tmpEntity.GetTag(GAME_TAG.ENTITY_ID), t.Value, game);
 							SetPlayerName(game, entity.Value.GetTag(GAME_TAG.PLAYER_ID), tmpEntity.Name);
 							_tmpEntities.Remove(tmpEntity);
 							_tagChangeHandler.TagChange(gameState, match.Groups["tag"].Value, entity.Key, match.Groups["value"].Value, game);
@@ -103,7 +107,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 								{
 									game.Entities[id].Name = tmpEntity.Name;
 									foreach(var t in tmpEntity.Tags)
-										game.Entities[id].SetTag(t.Key, t.Value);
+										_tagChangeHandler.TagChange(gameState, t.Key, id, t.Value, game);
 									_tmpEntities.Remove(tmpEntity);
 								}
 								else

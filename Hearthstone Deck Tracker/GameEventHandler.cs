@@ -150,9 +150,12 @@ namespace Hearthstone_Deck_Tracker
 			   && _game.CurrentGameStats.ReplayFile == null && RecordCurrentGameMode)
 				_game.CurrentGameStats.ReplayFile = ReplayMaker.SaveToDisk(_game.PowerLog);
 
+			if(_game.StoredGameStats != null && _game.CurrentGameStats != null)
+				_game.CurrentGameStats.StartTime = _game.StoredGameStats.StartTime;
+
 			SaveAndUpdateStats();
 
-			_game.StoredPowerLogs.Clear();
+			_game.ResetStoredGameState();
 
 			if(_arenaRewardDialog != null)
 			{
@@ -373,17 +376,29 @@ namespace Hearthstone_Deck_Tracker
 			}
 		}
 
+		private readonly Queue<Tuple<ActivePlayer, int>> _turnQueue = new Queue<Tuple<ActivePlayer, int>>();
 		public async void TurnStart(ActivePlayer player, int turnNumber)
 		{
 			if(!_game.IsMulliganDone)
 				Log.Info("--- Mulligan ---");
+			if(turnNumber == 0)
+				turnNumber++;
+			_turnQueue.Enqueue(new Tuple<ActivePlayer, int>(player, turnNumber));
 			while(!_game.IsMulliganDone)
 				await Task.Delay(100);
+			while(_turnQueue.Any())
+				HandleTurnStart(_turnQueue.Dequeue());
+		}
+
+		private void HandleTurnStart(Tuple<ActivePlayer, int> turn)
+		{
+			var player = turn.Item1;
+			Log.Info($"--- {player} turn {turn.Item2} ---");
+			GameEvents.OnTurnStart.Execute(player);
+			if(_turnQueue.Count > 0)
+				return;
 			if(_game.CurrentGameMode == Casual || _game.CurrentGameMode == None)
 				DetectRanks();
-			Log.Info($"--- {player} turn {turnNumber + 1} ---");
-			//doesn't really matter whose turn it is for now, just restart timer
-			//maybe add timer to player/opponent windows
 			TurnTimer.Instance.SetCurrentPlayer(player);
 			TurnTimer.Instance.Restart();
 			if(player == ActivePlayer.Player && !_game.IsInMenu)
@@ -394,7 +409,6 @@ namespace Hearthstone_Deck_Tracker
 				if(Config.Instance.BringHsToForeground)
 					User32.BringHsToForeground();
 			}
-			GameEvents.OnTurnStart.Execute(player);
 		}
 
 		private async void DetectRanks()
@@ -657,7 +671,6 @@ namespace Hearthstone_Deck_Tracker
 
 				_lastGame = _game.CurrentGameStats;
 				selectedDeck.DeckStats.AddGameResult(_lastGame);
-				selectedDeck.StatsUpdated();
 				if(Config.Instance.ArenaRewardDialog && selectedDeck.IsArenaRunCompleted.HasValue && selectedDeck.IsArenaRunCompleted.Value)
 					_arenaRewardDialog = new ArenaRewardDialog(selectedDeck);
 
@@ -793,18 +806,16 @@ namespace Hearthstone_Deck_Tracker
 				}
 				else
 				{
+					_assignedDeck.StatsUpdated();
 					Log.Info("Saving DeckStats");
 					DeckStatsList.Save();
 				}
-
-				Core.MainWindow.DeckPickerList.UpdateDecks(forceUpdate: new[] {_assignedDeck});
 				statsControl.Refresh();
 			}
 			else if(_assignedDeck != null && _assignedDeck.DeckStats.Games.Contains(_game.CurrentGameStats))
 			{
 				//game was not supposed to be recorded, remove from deck again.
 				_assignedDeck.DeckStats.Games.Remove(_game.CurrentGameStats);
-				statsControl.Refresh();
 				Log.Info($"Gamemode {_game.CurrentGameMode} is not supposed to be saved. Removed game from {_assignedDeck}.");
 			}
 			else if(_assignedDeck == null)
@@ -813,7 +824,6 @@ namespace Hearthstone_Deck_Tracker
 				if(defaultDeck != null)
 				{
 					defaultDeck.Games.Remove(_game.CurrentGameStats);
-					statsControl.Refresh();
 					Log.Info($"Gamemode {_game.CurrentGameMode} is not supposed to be saved. Removed game from default {_game.Player.Class}.");
 				}
 			}
