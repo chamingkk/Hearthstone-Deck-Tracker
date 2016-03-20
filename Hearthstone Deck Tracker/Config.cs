@@ -25,6 +25,9 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue("Blue")]
 		public string AccentName = "Blue";
 
+		[DefaultValue(MetroTheme.BaseLight)]
+		public MetroTheme AppTheme = MetroTheme.BaseLight;
+
 		[DefaultValue("00000000-0000-0000-0000-000000000000")]
 		public string ActiveDeckIdString = Guid.Empty.ToString();
 
@@ -431,6 +434,9 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(0L)]
 		public long LastHearthStatsGamesSync = 0L;
 
+		[DefaultValue(LastPlayedDateFormat.DayMonthYear)]
+		public LastPlayedDateFormat LastPlayedDateFormat = LastPlayedDateFormat.DayMonthYear;
+
 		[DefaultValue(false)]
 		public bool LogConfigConsolePrinting = false;
 
@@ -812,9 +818,6 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(TagFilerOperation.Or)]
 		public TagFilerOperation TagOperation = TagFilerOperation.Or;
 
-		[DefaultValue("BaseLight")]
-		public string ThemeName = "BaseLight";
-
 		[DefaultValue(false)]
 		public bool TimerAlert = false;
 
@@ -907,6 +910,13 @@ namespace Hearthstone_Deck_Tracker
 
 		[DefaultValue(false)]
 		public bool WindowsTopmostIfHsForeground = false;
+
+		#region deprecated
+
+		[DefaultValue("BaseLight")]
+		public string ThemeName = "BaseLight";
+
+		#endregion
 
 		private GameDetailsConfig _gameDetails;
 

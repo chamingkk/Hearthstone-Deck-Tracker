@@ -25,6 +25,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 		public void Handle(string logLine, IHsGameState gameState, IGame game)
 		{
 			var setup = false;
+			var creationTag = false;
 			if(GameEntityRegex.IsMatch(logLine))
 			{
 				var match = GameEntityRegex.Match(logLine);
@@ -83,7 +84,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 						}
 						GAME_TAG tag;
 						Enum.TryParse(match.Groups["tag"].Value, out tag);
-						var value = LogReaderHelper.ParseTagValue(tag, match.Groups["value"].Value);
+						var value = LogReaderHelper.ParseTag(tag, match.Groups["value"].Value);
 						if(unnamedPlayers.Count == 1)
 							entity = unnamedPlayers.Single();
 						else if(unnamedPlayers.Count == 2 && tag == GAME_TAG.CURRENT_PLAYER && value == 0)
@@ -146,6 +147,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 				}
 				gameState.CurrentEntityId = id;
 				gameState.CurrentEntityHasCardId = !string.IsNullOrEmpty(cardId);
+				gameState.CurrentEntityZone = LogReaderHelper.ParseEnum<TAG_ZONE>(match.Groups["zone"].Value);
 				setup = true;
 			}
 			else if(UpdatingEntityRegex.IsMatch(logLine))
@@ -184,8 +186,9 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 			else if(CreationTagRegex.IsMatch(logLine) && !logLine.Contains("HIDE_ENTITY"))
 			{
 				var match = CreationTagRegex.Match(logLine);
-				_tagChangeHandler.TagChange(gameState, match.Groups["tag"].Value, gameState.CurrentEntityId, match.Groups["value"].Value, game);
+				_tagChangeHandler.TagChange(gameState, match.Groups["tag"].Value, gameState.CurrentEntityId, match.Groups["value"].Value, game, true);
 				setup = true;
+				creationTag = true;
 			}
 			else if((logLine.Contains("Begin Spectating") || logLine.Contains("Start Spectator")) && game.IsInMenu)
 				gameState.GameHandler.SetGameMode(GameMode.Spectator);
@@ -284,10 +287,27 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 			else if(logLine.Contains("BlockType=JOUST"))
 				gameState.JoustReveals = 2;
 			else if(logLine.Contains("CREATE_GAME"))
+			{
 				setup = true;
+				_tagChangeHandler.ClearQueuedActions();
+			}
 
 			if(!setup)
 				gameState.SetupDone = true;
+
+			if(game.IsInMenu)
+				return;
+			if(!creationTag && gameState.DeterminedPlayers)
+				_tagChangeHandler.InvokeQueuedActions();
+			else if(!gameState.DeterminedPlayers && gameState.SetupDone)
+			{
+				Log.Warn("Could not determine players by checking for opponent hand.");
+				var playerCard = game.Entities.FirstOrDefault(x => x.Value.IsInHand && !string.IsNullOrEmpty(x.Value.CardId)).Value;
+				if(playerCard != null)
+					_tagChangeHandler.DeterminePlayers(gameState, game, playerCard.GetTag(GAME_TAG.CONTROLLER), false);
+				else
+					Log.Warn("Could not determine players by checking for player hand either... waiting for draws...");
+			}
 		}
 
 		private static void SetPlayerName(IGame game, int playerId, string name)
