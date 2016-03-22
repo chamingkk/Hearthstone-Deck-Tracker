@@ -91,20 +91,6 @@ namespace Hearthstone_Deck_Tracker
 			NetDeck.CheckForChromeExtention();
 			DataIssueResolver.Run();
 
-			if(Helper.HearthstoneDirExists)
-			{
-				if(ConfigManager.LogConfigUpdateFailed)
-					MainWindow.ShowLogConfigUpdateFailedMessage().Forget();
-				else if(ConfigManager.LogConfigUpdated && Game.IsRunning)
-				{
-					MainWindow.ShowMessageAsync("Restart Hearthstone",
-					                            "This is either your first time starting HDT or the log.config file has been updated. Please restart Hearthstone, for HDT to work properly.");
-				}
-				LogReaderManager.Start(Game);
-			}
-			else
-				MainWindow.ShowHsNotInstalledMessage().Forget();
-
 			Helper.CopyReplayFiles();
 			BackupManager.Run();
 
@@ -123,8 +109,27 @@ namespace Hearthstone_Deck_Tracker
 			PluginManager.Instance.StartUpdateAsync();
 
 			UpdateOverlayAsync();
+
+			if(Helper.HearthstoneDirExists)
+			{
+				if(ConfigManager.LogConfigUpdateFailed)
+					MainWindow.ShowLogConfigUpdateFailedMessage().Forget();
+				else if(ConfigManager.LogConfigUpdated && Game.IsRunning)
+				{
+					MainWindow.ShowMessageAsync("Hearthstone restart required", "The log.config file has been updated. HDT may not work properly until Hearthstone has been restarted.");
+					Overlay.ShowRestartRequiredWarning();
+				}
+				LogReaderManager.Start(Game);
+			}
+			else
+				MainWindow.ShowHsNotInstalledMessage().Forget();
+
 			NewsUpdater.UpdateAsync();
 			HotKeyManager.Load();
+
+			if(Helper.HearthstoneDirExists && Config.Instance.StartHearthstoneWithHDT && !Game.IsRunning)
+				Helper.StartHearthstoneAsync();
+
 			Initialized = true;
 
 			Analytics.Analytics.TrackPageView($"/app/v{Helper.GetCurrentVersion().ToVersionString()}/{loginType.ToString().ToLower()}{(newUser ? "/new" : "")}", "");
@@ -204,6 +209,7 @@ namespace Hearthstone_Deck_Tracker
 						Log.Info("Reset region");
 						await Reset();
 						Game.IsInMenu = true;
+						Overlay.HideRestartRequiredWarning();
 
 						MainWindow.BtnStartHearthstone.Visibility = Visibility.Visible;
 						TrayIcon.NotifyIcon.ContextMenu.MenuItems[useNoDeckMenuItem].Visible = true;

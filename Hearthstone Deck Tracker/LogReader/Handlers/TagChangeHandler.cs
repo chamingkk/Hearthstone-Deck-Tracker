@@ -23,6 +23,19 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 	{
 		public void TagChange(IHsGameState gameState, string rawTag, int id, string rawValue, IGame game, bool isRecursive = false)
 		{
+			GAME_TAG tag;
+			if(!Enum.TryParse(rawTag, out tag))
+			{
+				int tmp;
+				if(int.TryParse(rawTag, out tmp) && Enum.IsDefined(typeof(GAME_TAG), tmp))
+					tag = (GAME_TAG)tmp;
+			}
+			var value = LogReaderHelper.ParseTagValue(tag, rawValue);
+			TagChange(gameState, tag, id, value, game, isRecursive);
+		}
+
+		public void TagChange(IHsGameState gameState, GAME_TAG tag, int id, int value, IGame game, bool isRecursive = false)
+		{
 			if(gameState.LastId != id)
 			{
 				//game.SecondToLastUsedId = gameState.LastId;
@@ -37,14 +50,6 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 				gameState.MaxId = id;
 			if(!game.Entities.ContainsKey(id))
 				game.Entities.Add(id, new Entity(id));
-			GAME_TAG tag;
-			if(!Enum.TryParse(rawTag, out tag))
-			{
-				int tmp;
-				if(int.TryParse(rawTag, out tmp) && Enum.IsDefined(typeof(GAME_TAG), tmp))
-					tag = (GAME_TAG)tmp;
-			}
-			var value = LogReaderHelper.ParseTagValue(tag, rawValue);
 			var prevValue = game.Entities[id].GetTag(tag);
 			game.Entities[id].SetTag(tag, value);
 
@@ -63,7 +68,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 						if(controller == 0)
 						{
 							game.Entities[id].SetTag(ZONE, prevValue);
-							gameState.WaitForController = new {Tag = rawTag, Id = id, Value = rawValue};
+							gameState.WaitForController = new {Tag = tag, Id = id, Value = value};
 							return;
 						}
 					}
@@ -74,9 +79,6 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 					break;
 				case CARDTYPE:
 					CardTypeChange(gameState, id, game, value);
-					break;
-				case CURRENT_PLAYER:
-					CurrentPlayerChange(gameState, id, game, value);
 					break;
 				case LAST_CARD_PLAYED:
 					LastCardPlayedChange(gameState, value);
@@ -94,7 +96,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 					ProposedAttackerChange(game, value);
 					break;
 				case NUM_MINIONS_PLAYED_THIS_TURN:
-					NumMinionsPlayedThisTurnChange(gameState, value);
+					NumMinionsPlayedThisTurnChange(gameState, game, value);
 					break;
 				case PREDAMAGE:
 					PredamageChange(gameState, id, game, value);
@@ -121,18 +123,33 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 					ControllerChange(gameState, id, game, prevValue, value, cardId);
 					break;
 				case FATIGUE:
-					FatigueChange(gameState, rawValue, game, controller);
+					FatigueChange(gameState, value, game, controller);
 					break;
 				case STEP:
 					StepChange(gameState, game);
 					break;
+				case TURN:
+					TurnChange(gameState, game);
+					break;
 			}
 			if(gameState.WaitForController != null && !isRecursive)
 			{
-				TagChange(gameState, (string)gameState.WaitForController.Tag, (int)gameState.WaitForController.Id,
-						  (string)gameState.WaitForController.Value, game, true);
+				TagChange(gameState, (GAME_TAG)gameState.WaitForController.Tag, (int)gameState.WaitForController.Id,
+						  (int)gameState.WaitForController.Value, game, true);
 				gameState.WaitForController = null;
 			}
+		}
+
+		private void TurnChange(IHsGameState gameState, IGame game)
+		{
+			if(game.Entities.Count <= 1)
+				return;
+			var activePlayer = game.PlayerEntity.HasTag(CURRENT_PLAYER) ? ActivePlayer.Player : ActivePlayer.Opponent;
+			gameState.GameHandler.TurnStart(activePlayer, gameState.GetTurnNumber());
+			if(activePlayer == ActivePlayer.Player)
+				gameState.PlayerUsedHeroPower = false;
+			else
+				gameState.OpponentUsedHeroPower = false;
 		}
 
 		private void StepChange(IHsGameState gameState, IGame game)
@@ -185,11 +202,11 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 
 		private static void ProposedAttackerChange(IGame game, int value) => game.OpponentSecrets.ProposedAttackerEntityId = value;
 
-		private static void NumMinionsPlayedThisTurnChange(IHsGameState gameState, int value)
+		private static void NumMinionsPlayedThisTurnChange(IHsGameState gameState, IGame game, int value)
 		{
 			if(value <= 0)
 				return;
-			if(gameState.PlayersTurn())
+			if(game.PlayerEntity.IsCurrentPlayer)
 				gameState.GameHandler.HandlePlayerMinionPlayed();
 		}
 
@@ -197,7 +214,7 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 		{
 			if(value <= 0)
 				return;
-			if(gameState.PlayersTurn())
+			if(game.PlayerEntity.IsCurrentPlayer)
 				gameState.GameHandler.HandleOpponentDamage(game.Entities[id]);
 		}
 
@@ -205,21 +222,23 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 		{
 			if(value <= 0)
 				return;
-			if(!gameState.PlayersTurn())
+			if(game.OpponentEntity.IsCurrentPlayer)
 				gameState.GameHandler.HandleOpponentTurnStart(game.Entities[id]);
 		}
 
-		private static void FatigueChange(IHsGameState gameState, string rawValue, IGame game, int controller)
+		private static void FatigueChange(IHsGameState gameState, int value, IGame game, int controller)
 		{
 			if(controller == game.Player.Id)
-				gameState.GameHandler.HandlePlayerFatigue(Convert.ToInt32(rawValue));
+				gameState.GameHandler.HandlePlayerFatigue(value);
 			else if(controller == game.Opponent.Id)
-				gameState.GameHandler.HandleOpponentFatigue(Convert.ToInt32(rawValue));
+				gameState.GameHandler.HandleOpponentFatigue(value);
 		}
 
 		private static void ControllerChange(IHsGameState gameState, int id, IGame game, int prevValue, int value, string cardId)
 		{
 			if(prevValue <= 0)
+				return;
+			if(game.Entities[id].HasTag(PLAYER_ID))
 				return;
 			if(value == game.Player.Id)
 			{
@@ -309,26 +328,12 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 
 		private static void NumAttacksThisTurnChange(IHsGameState gameState, int id, IGame game, int value, int controller)
 		{
-			if(value > 0)
-			{
-				if(controller == game.Player.Id)
-					gameState.ProposeKeyPoint(Attack, id, ActivePlayer.Player);
-				else if(controller == game.Opponent.Id)
-					gameState.ProposeKeyPoint(Attack, id, ActivePlayer.Opponent);
-			}
-		}
-
-		private static void CurrentPlayerChange(IHsGameState gameState, int id, IGame game, int value)
-		{
-			if(value == 1)
-			{
-				var activePlayer = game.Entities[id].IsPlayer ? ActivePlayer.Player : ActivePlayer.Opponent;
-				gameState.GameHandler.TurnStart(activePlayer, gameState.GetTurnNumber());
-				if(activePlayer == ActivePlayer.Player)
-					gameState.PlayerUsedHeroPower = false;
-				else
-					gameState.OpponentUsedHeroPower = false;
-			}
+			if(value <= 0)
+				return;
+			if(controller == game.Player.Id)
+				gameState.ProposeKeyPoint(Attack, id, ActivePlayer.Player);
+			else if(controller == game.Opponent.Id)
+				gameState.ProposeKeyPoint(Attack, id, ActivePlayer.Opponent);
 		}
 
 		private void CardTypeChange(IHsGameState gameState, int id, IGame game, int value)
@@ -535,10 +540,12 @@ namespace Hearthstone_Deck_Tracker.LogReader.Handlers
 					}
 					else if(controller == game.Opponent.Id)
 					{
-						gameState.GameHandler.HandleOpponentPlayToGraveyard(game.Entities[id], cardId, gameState.GetTurnNumber(), gameState.PlayersTurn());
+						gameState.GameHandler.HandleOpponentPlayToGraveyard(game.Entities[id], cardId, gameState.GetTurnNumber(), game.PlayerEntity.IsCurrentPlayer);
 						if(game.Entities[id].HasTag(HEALTH))
 							gameState.ProposeKeyPoint(Death, id, ActivePlayer.Opponent);
 					}
+					break;
+				case PLAY:
 					break;
 				default:
 					Log.Warn($"unhandled zone change (id={id}): {prevValue} -> {value}");
