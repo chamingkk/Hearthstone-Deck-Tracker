@@ -15,6 +15,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -173,7 +174,7 @@ namespace Hearthstone_Deck_Tracker
 			return result;
 		}
 
-		public static PngBitmapEncoder ScreenshotDeck(DeckListView dlv, double dpiX, double dpiY, string name)
+		public static PngBitmapEncoder ScreenshotDeck(ItemsControl dlv, double dpiX, double dpiY, string name)
 		{
 			try
 			{
@@ -430,16 +431,16 @@ namespace Hearthstone_Deck_Tracker
 			}
 		}
 
-		public static void UpdatePlayerCards()
+		public static void UpdatePlayerCards(bool reset = false)
 		{
-			Core.Overlay.UpdatePlayerCards();
-			Core.Windows.PlayerWindow.UpdatePlayerCards();
+			Core.Overlay.UpdatePlayerCards(reset);
+			Core.Windows.PlayerWindow.UpdatePlayerCards(reset);
 		}
 
-		public static void UpdateOpponentCards()
+		public static void UpdateOpponentCards(bool reset = false)
 		{
-			Core.Overlay.UpdateOpponentCards();
-			Core.Windows.OpponentWindow.UpdateOpponentCards();
+			Core.Overlay.UpdateOpponentCards(reset);
+			Core.Windows.OpponentWindow.UpdateOpponentCards(reset);
 		}
 
 		public static async Task StartHearthstoneAsync()
@@ -782,6 +783,7 @@ namespace Hearthstone_Deck_Tracker
 				return Region.ASIA;
 			if(ip.StartsWith("114.113"))
 				return Region.CHINA;
+			Log.Warn("Unknown IP: " + ip);
 			return Region.UNKNOWN;
 		}
 	}

@@ -18,13 +18,10 @@ namespace Hearthstone_Deck_Tracker.Windows
 		public void UpdatePlayerLayout()
 		{
 			StackPanelPlayer.Children.Clear();
-			foreach (var item in Config.Instance.PanelOrderPlayer)
+			foreach(var item in Config.Instance.PanelOrderPlayer)
 			{
-				switch (item)
+				switch(item)
 				{
-					case DeckPanelCards:
-						StackPanelPlayer.Children.Add(ListViewPlayer);
-						break;
 					case DeckPanelDrawChances:
 						StackPanelPlayer.Children.Add(CanvasPlayerChance);
 						break;
@@ -40,6 +37,9 @@ namespace Hearthstone_Deck_Tracker.Windows
 					case DeckPanelWins:
 						StackPanelPlayer.Children.Add(LblWins);
 						break;
+					case DeckPanelCards:
+						StackPanelPlayer.Children.Add(ViewBoxPlayer);
+						break;
 				}
 			}
 		}
@@ -51,9 +51,6 @@ namespace Hearthstone_Deck_Tracker.Windows
 			{
 				switch (item)
 				{
-					case DeckPanelCards:
-						StackPanelOpponent.Children.Add(ListViewOpponent);
-						break;
 					case DeckPanelDrawChances:
 						StackPanelOpponent.Children.Add(CanvasOpponentChance);
 						break;
@@ -64,7 +61,10 @@ namespace Hearthstone_Deck_Tracker.Windows
 						StackPanelOpponent.Children.Add(LblOpponentFatigue);
 						break;
 					case DeckPanelWinrate:
-						StackPanelOpponent.Children.Add(ViewBoxWinRateAgainst);
+						StackPanelOpponent.Children.Add(LblWinRateAgainst);
+						break;
+					case DeckPanelCards:
+						StackPanelOpponent.Children.Add(ViewBoxOpponent);
 						break;
 				}
 			}
@@ -140,22 +140,22 @@ namespace Hearthstone_Deck_Tracker.Windows
 			LblDrawChance1.Text = Math.Round(100.0f / cardsLeftInDeck, 1) + "%";
 		}
 
-		public async void UpdatePlayerCards()
+		public async void UpdatePlayerCards(bool reset)
 		{
 			_lastPlayerUpdateReqest = DateTime.Now;
 			await Task.Delay(50);
 			if ((DateTime.Now - _lastPlayerUpdateReqest).Milliseconds < 50)
 				return;
-			OnPropertyChanged(nameof(PlayerDeck));
+			ListViewPlayer.Update(PlayerDeck, true, reset);
 		}
 
-		public async void UpdateOpponentCards()
+		public async void UpdateOpponentCards(bool reset)
 		{
 			_lastOpponentUpdateReqest = DateTime.Now;
 			await Task.Delay(50);
 			if ((DateTime.Now - _lastOpponentUpdateReqest).Milliseconds < 50)
 				return;
-			OnPropertyChanged(nameof(OpponentDeck));
+			ListViewOpponent.Update(OpponentDeck, false, reset);
 		}
 
 	}

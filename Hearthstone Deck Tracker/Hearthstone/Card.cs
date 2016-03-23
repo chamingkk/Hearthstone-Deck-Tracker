@@ -9,7 +9,10 @@ using System.Windows;
 using System.Windows.Media;
 using System.Xml.Serialization;
 using HearthDb.Enums;
-using Hearthstone_Deck_Tracker.Windows;
+using Hearthstone_Deck_Tracker.Annotations;
+using Hearthstone_Deck_Tracker.Utility;
+using Hearthstone_Deck_Tracker.Utility.Logging;
+using Hearthstone_Deck_Tracker.Utility.Themes;
 using Rarity = Hearthstone_Deck_Tracker.Enums.Rarity;
 
 #endregion
@@ -23,24 +26,20 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		private HearthDb.Card _dbCard;
 
 		private readonly Regex _overloadRegex = new Regex(@"Overload:.+?\((?<value>(\d+))\)");
-
-		[NonSerialized]
-		private ImageBrush _cachedBackground;
-
-		private bool _coloredFrame;
-		private bool _coloredGem;
 		private int _count;
 		private string _englishText;
 		private int _inHandCount;
 		private bool _isCreated;
-		internal bool IsFrameHighlighted;
-		private int _lastCount;
 		private bool _loaded;
 		private string _localizedName;
 		private string _name;
 		private int? _overload;
 		private string _text;
 		private bool _wasDiscarded;
+
+		[NonSerialized]
+		private static readonly Dictionary<string, Dictionary<int, CardImageObject>> CardImageCache =
+			new Dictionary<string, Dictionary<int, CardImageObject>>();
 
 		[XmlIgnore]
 		public List<string> AlternativeNames = new List<string>();
@@ -324,14 +323,6 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			}
 		}
 
-		public int Height => (int)Math.Round(OverlayWindow.Scaling * 35, 0);
-
-		public int OpponentHeight => (int)Math.Round(OverlayWindow.OpponentScaling * 35, 0);
-
-		public int PlayerWindowHeight => (int)Math.Round(PlayerWindow.Scaling * 35, 0);
-
-		public int OpponentWindowHeight => (int)Math.Round(OpponentWindow.Scaling * 35, 0);
-
 		public string GetPlayerClass => PlayerClass ?? "Neutral";
 
 		public SolidColorBrush ColorPlayer
@@ -339,12 +330,8 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			get
 			{
 				Color color;
-				if(HighlightDraw && Config.Instance.HighlightLastDrawn)
-					color = Colors.Orange;
-				else if(HighlightInHand && Config.Instance.HighlightCardsInHand)
+				if(HighlightInHand && Config.Instance.HighlightCardsInHand)
 					color = Colors.GreenYellow;
-				else if(Count <= 0 || Jousted)
-					color = Colors.Gray;
 				else if(WasDiscarded && Config.Instance.HighlightDiscarded)
 					color = Colors.IndianRed;
 				else
@@ -352,9 +339,6 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 				return new SolidColorBrush(color);
 			}
 		}
-
-		[XmlIgnore]
-		public bool HighlightFrame { get; set; }
 
 		public SolidColorBrush ColorOpponent => new SolidColorBrush(Colors.White);
 
@@ -377,28 +361,40 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		{
 			get
 			{
-				if(_cachedBackground != null && Count == _lastCount && _coloredFrame == Config.Instance.RarityCardFrames
-				   && _coloredGem == Config.Instance.RarityCardGems && IsFrameHighlighted == HighlightFrame)
-					return _cachedBackground;
-				_lastCount = Count;
-				_coloredFrame = Config.Instance.RarityCardFrames;
-				_coloredGem = Config.Instance.RarityCardGems;
 				if(Id == null || Name == null)
 					return new ImageBrush();
+				var cardImageObj = new CardImageObject(this);
+				Dictionary<int, CardImageObject> cache;
+				if(CardImageCache.TryGetValue(Id, out cache))
+				{
+					CardImageObject cached;
+					if(cache.TryGetValue(cardImageObj.GetHashCode(), out cached))
+						return cached.Image;
+				}
 				try
 				{
-					_cachedBackground = new CardImageBuilder(this).Build();
-					return _cachedBackground;
+					var image = ThemeManager.GetBarImageBuilder(this).Build();
+					cardImageObj = new CardImageObject(image, this);
+					if(cache == null)
+					{
+						cache = new Dictionary<int, CardImageObject>();
+						CardImageCache.Add(Id, cache);
+					}
+					cache.Add(cardImageObj.GetHashCode(), cardImageObj);
+					return cardImageObj.Image;
 				}
-				catch(Exception)
+				catch(Exception ex)
 				{
+					Log.Error($"Image builder failed: {ex.Message}");
 					return new ImageBrush();
 				}
 			}
 		}
 
-		[XmlIgnore]
-		public bool HighlightDraw { get; set; }
+		internal void Update() => OnPropertyChanged(nameof(Background));
+		internal void UpdateHighlight() => OnPropertyChanged(nameof(Highlight));
+
+		public ImageBrush Highlight => ThemeManager.CurrentTheme?.HighlightImage ?? new ImageBrush();
 
 		[XmlIgnore]
 		public bool HighlightInHand { get; set; }
@@ -411,8 +407,6 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 
 		public object Clone() => new Card(Id, PlayerClass, Rarity, Type, Name, Cost, LocalizedName, InHandCount, Count, _text, EnglishText, Attack,
 										  Health, Race, Mechanics, Durability, Artist, Set, AlternativeNames, AlternativeTexts, _dbCard);
-
-		public event PropertyChangedEventHandler PropertyChanged;
 
 		public override string ToString() => Name + "(" + Count + ")";
 
@@ -457,16 +451,66 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			OnPropertyChanged();
 		}
 
-		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
-		{
-			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-		}
-
 		private static string CleanUpText(string text, bool replaceTags = true)
 		{
 			if (replaceTags)
 				text = text?.Replace("<b>", "").Replace("</b>", "").Replace("<i>", "").Replace("</i>", "");
 			return text?.Replace("$", "").Replace("#", "").Replace("\\n", "\n");
+		}
+
+		public event PropertyChangedEventHandler PropertyChanged;
+
+		[NotifyPropertyChangedInvocator]
+		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+		{
+			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+		}
+	}
+
+	internal class CardImageObject
+	{
+		public ImageBrush Image { get; }
+		public int Count { get; }
+		public bool ColoredFrame { get; }
+		public bool ColoredGem { get; }
+		public string Theme { get; }
+		public int TextColorHash { get; }
+
+		public CardImageObject(ImageBrush image, Card card) : this(card)
+		{
+			Image = image;
+		}
+
+		public CardImageObject(Card card)
+		{
+			Count = card.Count;
+			ColoredFrame = Config.Instance.RarityCardFrames;
+			ColoredGem = Config.Instance.RarityCardGems;
+			Theme = ThemeManager.CurrentTheme?.Name;
+			TextColorHash = card.ColorPlayer.Color.GetHashCode();
+		}
+
+		public override bool Equals(object obj)
+		{
+			var cardObj = obj as CardImageObject;
+			return cardObj != null && Equals(cardObj);
+		}
+
+		protected bool Equals(CardImageObject other)
+			=> Count == other.Count && ColoredFrame == other.ColoredFrame && ColoredGem == other.ColoredGem
+				&& string.Equals(Theme, other.Theme) && TextColorHash == other.TextColorHash;
+
+		public override int GetHashCode()
+		{
+			unchecked
+			{
+				var hashCode = Count;
+				hashCode = (hashCode * 397) ^ ColoredFrame.GetHashCode();
+				hashCode = (hashCode * 397) ^ ColoredGem.GetHashCode();
+				hashCode = (hashCode * 397) ^ (Theme?.GetHashCode() ?? 0);
+				hashCode = (hashCode * 397) ^ TextColorHash;
+				return hashCode;
+			}
 		}
 	}
 }

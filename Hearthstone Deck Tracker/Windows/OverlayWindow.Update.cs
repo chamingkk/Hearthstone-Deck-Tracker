@@ -225,10 +225,10 @@ namespace Hearthstone_Deck_Tracker.Windows
 
 		private void UpdateElementPositions()
 		{
-			Canvas.SetTop(StackPanelPlayer, Height * Config.Instance.PlayerDeckTop / 100);
-			Canvas.SetLeft(StackPanelPlayer, Width * Config.Instance.PlayerDeckLeft / 100 - StackPanelPlayer.ActualWidth * Config.Instance.OverlayPlayerScaling / 100);
-			Canvas.SetTop(StackPanelOpponent, Height * Config.Instance.OpponentDeckTop / 100);
-			Canvas.SetLeft(StackPanelOpponent, Width * Config.Instance.OpponentDeckLeft / 100);
+			Canvas.SetTop(BorderStackPanelPlayer, Height * Config.Instance.PlayerDeckTop / 100);
+			Canvas.SetLeft(BorderStackPanelPlayer, Width * Config.Instance.PlayerDeckLeft / 100 - StackPanelPlayer.ActualWidth * Config.Instance.OverlayPlayerScaling / 100);
+			Canvas.SetTop(BorderStackPanelOpponent, Height * Config.Instance.OpponentDeckTop / 100);
+			Canvas.SetLeft(BorderStackPanelOpponent, Width * Config.Instance.OpponentDeckLeft / 100);
 			Canvas.SetTop(StackPanelSecrets, Height * Config.Instance.SecretsTop / 100);
 			Canvas.SetLeft(StackPanelSecrets, Width * Config.Instance.SecretsLeft / 100);
 			Canvas.SetTop(LblTurnTime, Height * Config.Instance.TimersVerticalPosition / 100 - 5);
@@ -262,36 +262,10 @@ namespace Hearthstone_Deck_Tracker.Windows
 
 		private void UpdateElementSizes()
 		{
-			var totalPlayerLabelsHeight = CanvasPlayerChance.ActualHeight + CanvasPlayerCount.ActualHeight + LblPlayerFatigue.ActualHeight
-										  + LblDeckTitle.ActualHeight + LblWins.ActualHeight;
-			if (((Height * Config.Instance.PlayerDeckHeight / (Config.Instance.OverlayPlayerScaling / 100) / 100)
-				- (ListViewPlayer.Items.Count * 35 * Scaling + totalPlayerLabelsHeight)) < 1 || Scaling < 1)
-			{
-				var previousScaling = Scaling;
-				Scaling = (Height * Config.Instance.PlayerDeckHeight / (Config.Instance.OverlayPlayerScaling / 100) / 100)
-						  / (ListViewPlayer.Items.Count * 35 + totalPlayerLabelsHeight);
-				if (Scaling > 1)
-					Scaling = 1;
-
-				if (previousScaling != Scaling)
-					ListViewPlayer.Items.Refresh();
-			}
-
-			var totalOpponentLabelsHeight = CanvasOpponentChance.ActualHeight + CanvasOpponentCount.ActualHeight
-											+ LblOpponentFatigue.ActualHeight + LblWinRateAgainst.ActualHeight;
-			if (((Height * Config.Instance.OpponentDeckHeight / (Config.Instance.OverlayOpponentScaling / 100) / 100)
-				- (ListViewOpponent.Items.Count * 35 * OpponentScaling + totalOpponentLabelsHeight)) < 1 || OpponentScaling < 1)
-			{
-				var previousScaling = OpponentScaling;
-				OpponentScaling = (Height * Config.Instance.OpponentDeckHeight / (Config.Instance.OverlayOpponentScaling / 100) / 100)
-								  / (ListViewOpponent.Items.Count * 35 + totalOpponentLabelsHeight);
-				if (OpponentScaling > 1)
-					OpponentScaling = 1;
-
-				if (previousScaling != OpponentScaling)
-					ListViewOpponent.Items.Refresh();
-			}
-
+			OnPropertyChanged(nameof(PlayerStackHeight));
+			OnPropertyChanged(nameof(PlayerListHeight));
+			OnPropertyChanged(nameof(OpponentStackHeight));
+			OnPropertyChanged(nameof(OpponentListHeight));
 			//Gold progress
 			RectGoldDisplay.Height = GoldFrameHeight;
 			RectGoldDisplay.Width = GoldFrameWidth;
@@ -306,11 +280,20 @@ namespace Hearthstone_Deck_Tracker.Windows
 			var atkFont = (int)Math.Round(Height * 0.0223, 0);
 			IconBoardAttackPlayer.Width = atkWidth;
 			IconBoardAttackPlayer.Height = atkWidth;
+			TextBlockPlayerAttack.Width = atkWidth;
+			TextBlockPlayerAttack.Height = atkWidth;
 			TextBlockPlayerAttack.FontSize = atkFont;
 			IconBoardAttackOpponent.Width = atkWidth;
 			IconBoardAttackOpponent.Height = atkWidth;
+			TextBlockOpponentAttack.Width = atkWidth;
+			TextBlockOpponentAttack.Height = atkWidth;
 			TextBlockOpponentAttack.FontSize = atkFont;
+		}
 
+		public void UpdateStackPanelAlignment()
+		{
+			OnPropertyChanged(nameof(PlayerStackPanelAlignment));
+			OnPropertyChanged(nameof(OpponentStackPanelAlignment));
 		}
 
 		public double GoldFrameHeight => Height * 25 / 768;

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using Hearthstone_Deck_Tracker.Controls.Stats;
 using Hearthstone_Deck_Tracker.Enums;
+using Hearthstone_Deck_Tracker.Controls.Information;
 using Hearthstone_Deck_Tracker.Hearthstone;
 using Hearthstone_Deck_Tracker.HearthStats.API;
 using Hearthstone_Deck_Tracker.LogReader;
@@ -17,6 +18,7 @@ using Hearthstone_Deck_Tracker.Utility.LogConfig;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 using Hearthstone_Deck_Tracker.Windows;
 using MahApps.Metro.Controls.Dialogs;
+using Hearthstone_Deck_Tracker.Utility.Themes;
 
 #endregion
 
@@ -53,6 +55,7 @@ namespace Hearthstone_Deck_Tracker
 			LogConfigUpdater.Run().Forget();
 			LogConfigWatcher.Start();
 			Helper.UpdateAppTheme();
+			ThemeManager.Run();
 			var splashScreenWindow = new SplashScreenWindow();
 			splashScreenWindow.ShowConditional();
 			Game = new GameV2();
@@ -89,6 +92,7 @@ namespace Hearthstone_Deck_Tracker
 			{
 				Updater.Cleanup();
 				MainWindow.FlyoutUpdateNotes.IsOpen = true;
+				MainWindow.UpdateNotesControl.SetHighlight(ConfigManager.PreviousVersion);
 				MainWindow.UpdateNotesControl.LoadUpdateNotes();
 			}
 			NetDeck.CheckForChromeExtention();
@@ -245,8 +249,8 @@ namespace Hearthstone_Deck_Tracker
 				LogReaderManager.Restart();
 			Overlay.HideSecrets();
 			Overlay.Update(false);
-			Overlay.UpdatePlayerCards();
-			Windows.PlayerWindow.UpdatePlayerCards();
+			Overlay.UpdatePlayerCards(true);
+			Windows.PlayerWindow.UpdatePlayerCards(true);
 		}
 
 

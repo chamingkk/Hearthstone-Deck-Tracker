@@ -24,7 +24,6 @@ namespace Hearthstone_Deck_Tracker
 	/// </summary>
 	public partial class OpponentWindow : INotifyPropertyChanged
 	{
-		public static double Scaling = 1.0;
 		private readonly GameV2 _game;
 		private bool _appIsClosing;
 
@@ -34,8 +33,6 @@ namespace Hearthstone_Deck_Tracker
 		{
 			InitializeComponent();
 			_game = game;
-			//ListViewOpponent.ItemsSource = opponentDeck;
-			//opponentDeck.CollectionChanged += OpponentDeckOnCollectionChanged;
 			Height = Config.Instance.OpponentWindowHeight;
 			if(Config.Instance.OpponentWindowLeft.HasValue)
 				Left = Config.Instance.OpponentWindowLeft.Value;
@@ -55,7 +52,6 @@ namespace Hearthstone_Deck_Tracker
 				Top = 100;
 				Left = 100;
 			}
-			Update();
 		}
 
 		public List<Card> OpponentDeck => _game.Opponent.DisplayRevealedCards;
@@ -66,8 +62,7 @@ namespace Hearthstone_Deck_Tracker
 
 		public void Update()
 		{
-			LblWinRateAgainst.Visibility = Config.Instance.ShowWinRateAgainst && _game.IsUsingPremade
-				                               ? Visibility.Visible : Visibility.Collapsed;
+			LblWinRateAgainst.Visibility = Config.Instance.ShowWinRateAgainst && _game.IsUsingPremade ? Visibility.Visible : Visibility.Collapsed;
 			CanvasOpponentChance.Visibility = Config.Instance.HideOpponentDrawChances ? Visibility.Collapsed : Visibility.Visible;
 			CanvasOpponentCount.Visibility = Config.Instance.HideOpponentCardCount ? Visibility.Collapsed : Visibility.Visible;
 			ListViewOpponent.Visibility = Config.Instance.HideOpponentCards ? Visibility.Collapsed : Visibility.Visible;
@@ -93,7 +88,7 @@ namespace Hearthstone_Deck_Tracker
 				switch(item)
 				{
 					case "Cards":
-						StackPanelMain.Children.Add(ListViewOpponent);
+						StackPanelMain.Children.Add(ViewBoxOpponent);
 						break;
 					case "Draw Chances":
 						StackPanelMain.Children.Add(CanvasOpponentChance);
@@ -105,10 +100,11 @@ namespace Hearthstone_Deck_Tracker
 						StackPanelMain.Children.Add(LblOpponentFatigue);
 						break;
 					case "Win Rate":
-						StackPanelMain.Children.Add(ViewboxWinRateAgainst);
+						StackPanelMain.Children.Add(LblWinRateAgainst);
 						break;
 				}
 			}
+			OnPropertyChanged(nameof(OpponentDeckMaxHeight));
 		}
 
 		public void SetOpponentCardCount(int cardCount, int cardsLeftInDeck, bool opponentHasCoin)
@@ -142,27 +138,12 @@ namespace Hearthstone_Deck_Tracker
 			LblOpponentHandChance1.Text = holdingNextTurn + "%";
 		}
 
-		private void Scale()
-		{
-			const int offsetToMakeSureGraphicsAreNotClipped = 40;
-			var allLabelsHeight = CanvasOpponentCount.ActualHeight + CanvasOpponentChance.ActualHeight + LblWinRateAgainst.ActualHeight
-			                      + LblOpponentFatigue.ActualHeight + offsetToMakeSureGraphicsAreNotClipped;
-			if(!(((Height - allLabelsHeight) - (ListViewOpponent.Items.Count * 35 * Scaling)) < 1) && !(Scaling < 1))
-				return;
-			var previousScaling = Scaling;
-			Scaling = (Height - allLabelsHeight) / (ListViewOpponent.Items.Count * 35);
-			if(Scaling > 1)
-				Scaling = 1;
+		public double OpponentDeckMaxHeight =>  ActualHeight - OpponentLabelsHeight;
 
-			if(previousScaling != Scaling)
-				ListViewOpponent.Items.Refresh();
-		}
+		public double OpponentLabelsHeight => CanvasOpponentChance.ActualHeight + CanvasOpponentCount.ActualHeight
+			+ LblOpponentFatigue.ActualHeight + LblWinRateAgainst.ActualHeight + 42;
 
-		private void Window_SizeChanged_1(object sender, SizeChangedEventArgs e)
-		{
-			Scale();
-			ListViewOpponent.Items.Refresh();
-		}
+		private void OpponentWindow_OnSizeChanged(object sender, SizeChangedEventArgs e) => OnPropertyChanged(nameof(OpponentDeckMaxHeight));
 
 		protected override void OnClosing(CancelEventArgs e)
 		{
@@ -172,12 +153,7 @@ namespace Hearthstone_Deck_Tracker
 			Hide();
 		}
 
-		private void Window_Activated_1(object sender, EventArgs e)
-		{
-			Scale();
-			ListViewOpponent.Items.Refresh();
-			Topmost = true;
-		}
+		private void OpponentWindow_OnActivated(object sender, EventArgs e) => Topmost = true;
 
 		internal void Shutdown()
 		{
@@ -185,43 +161,31 @@ namespace Hearthstone_Deck_Tracker
 			Close();
 		}
 
-		private void MetroWindow_Deactivated(object sender, EventArgs e)
+		private void OpponentWindow_OnDeactivated(object sender, EventArgs e)
 		{
 			if(!Config.Instance.WindowsTopmost)
 				Topmost = false;
 		}
 
-		public void SetTextLocation(bool top)
-		{
-			StackPanelMain.Children.Clear();
-			if(top)
-			{
-				StackPanelMain.Children.Add(CanvasOpponentChance);
-				StackPanelMain.Children.Add(CanvasOpponentCount);
-				StackPanelMain.Children.Add(ListViewOpponent);
-			}
-			else
-			{
-				StackPanelMain.Children.Add(ListViewOpponent);
-				StackPanelMain.Children.Add(CanvasOpponentChance);
-				StackPanelMain.Children.Add(CanvasOpponentCount);
-			}
-		}
-
-		public async void UpdateOpponentCards()
+		public async void UpdateOpponentCards(bool reset)
 		{
 			_lastOpponentUpdateReqest = DateTime.Now;
 			await Task.Delay(50);
 			if((DateTime.Now - _lastOpponentUpdateReqest).Milliseconds < 50)
 				return;
-			OnPropertyChanged(nameof(OpponentDeck));
-			Scale();
+			ListViewOpponent.Update(OpponentDeck, false, reset);
 		}
 
 		[NotifyPropertyChangedInvocator]
 		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
 		{
 			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+		}
+
+		private void OpponentWindow_OnLoaded(object sender, RoutedEventArgs e)
+		{
+			Update();
+			UpdateOpponentLayout();
 		}
 	}
 }

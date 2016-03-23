@@ -16,10 +16,11 @@ namespace Hearthstone_Deck_Tracker.Utility
 	public static class ConfigManager
 	{
 		public static Version UpdatedVersion { get; private set; }
+		public static Version PreviousVersion { get; private set; }
 
 		public static void Run()
 		{
-			var configVersion = string.IsNullOrEmpty(Config.Instance.CreatedByVersion) ? null : new Version(Config.Instance.CreatedByVersion);
+			PreviousVersion = string.IsNullOrEmpty(Config.Instance.CreatedByVersion) ? null : new Version(Config.Instance.CreatedByVersion);
 			var currentVersion = Helper.GetCurrentVersion();
 			if(currentVersion != null)
 			{
@@ -27,7 +28,7 @@ namespace Hearthstone_Deck_Tracker.Utility
 				// is rewritten to disk, thereby telling us what version of the application created it
 				Config.Instance.CreatedByVersion = currentVersion.ToString();
 			}
-			ConvertLegacyConfig(currentVersion, configVersion);
+			ConvertLegacyConfig(currentVersion, PreviousVersion);
 
 			if(Config.Instance.SelectedTags.Count == 0)
 				Config.Instance.SelectedTags.Add("All");
@@ -216,6 +217,24 @@ namespace Hearthstone_Deck_Tracker.Utility
 						Config.Instance.AppTheme = theme;
 						converted = true;
 					}
+				}
+				if(configVersion <= new Version(0, 13, 17, 0))
+				{
+					if(Math.Abs(Config.Instance.OpponentDeckHeight - 65) < 1 && Math.Abs(Config.Instance.OpponentDeckTop - 17) < 1)
+					{
+						Config.Instance.Reset(nameof(Config.OpponentDeckHeight));
+						Config.Instance.Reset(nameof(Config.OpponentDeckTop));
+					}
+					else
+						Config.Instance.OverlayCenterOpponentStackPanel = false;
+					if(Math.Abs(Config.Instance.PlayerDeckHeight - 65) < 1 && Math.Abs(Config.Instance.PlayerDeckTop - 17) < 1)
+					{
+						Config.Instance.Reset(nameof(Config.PlayerDeckHeight));
+						Config.Instance.Reset(nameof(Config.PlayerDeckTop));
+					}
+					else
+						Config.Instance.OverlayCenterPlayerStackPanel = false;
+					converted = true;
 				}
 			}
 
