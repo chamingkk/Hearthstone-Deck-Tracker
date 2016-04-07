@@ -471,8 +471,10 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 	{
 		public ImageBrush Image { get; }
 		public int Count { get; }
+		public bool Jousted { get; }
 		public bool ColoredFrame { get; }
 		public bool ColoredGem { get; }
+		public bool Created { get; }
 		public string Theme { get; }
 		public int TextColorHash { get; }
 
@@ -484,10 +486,12 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		public CardImageObject(Card card)
 		{
 			Count = card.Count;
+			Jousted = card.Jousted;
 			ColoredFrame = Config.Instance.RarityCardFrames;
 			ColoredGem = Config.Instance.RarityCardGems;
 			Theme = ThemeManager.CurrentTheme?.Name;
 			TextColorHash = card.ColorPlayer.Color.GetHashCode();
+			Created = card.IsCreated;
 		}
 
 		public override bool Equals(object obj)
@@ -497,18 +501,20 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		}
 
 		protected bool Equals(CardImageObject other)
-			=> Count == other.Count && ColoredFrame == other.ColoredFrame && ColoredGem == other.ColoredGem
-				&& string.Equals(Theme, other.Theme) && TextColorHash == other.TextColorHash;
+			=> Count == other.Count && Jousted == other.Jousted && ColoredFrame == other.ColoredFrame && ColoredGem == other.ColoredGem
+				&& string.Equals(Theme, other.Theme) && TextColorHash == other.TextColorHash && Created == other.Created;
 
 		public override int GetHashCode()
 		{
 			unchecked
 			{
 				var hashCode = Count;
+				hashCode = (hashCode * 397) ^ Jousted.GetHashCode();
 				hashCode = (hashCode * 397) ^ ColoredFrame.GetHashCode();
 				hashCode = (hashCode * 397) ^ ColoredGem.GetHashCode();
 				hashCode = (hashCode * 397) ^ (Theme?.GetHashCode() ?? 0);
 				hashCode = (hashCode * 397) ^ TextColorHash;
+				hashCode = (hashCode * 397) ^ Created.GetHashCode();
 				return hashCode;
 			}
 		}

@@ -18,6 +18,7 @@ using Hearthstone_Deck_Tracker.Replay;
 using Hearthstone_Deck_Tracker.Stats;
 using Hearthstone_Deck_Tracker.Stats.CompiledStats;
 using Hearthstone_Deck_Tracker.Utility;
+using Hearthstone_Deck_Tracker.Utility.Extensions;
 using Hearthstone_Deck_Tracker.Utility.Logging;
 using Hearthstone_Deck_Tracker.Windows;
 using static Hearthstone_Deck_Tracker.Enums.GameMode;
@@ -142,6 +143,7 @@ namespace Hearthstone_Deck_Tracker
 			Core.Overlay.HideTimers();
 			Core.Overlay.HideSecrets();
 			Core.Overlay.Update(true);
+			DeckManager.ResetIgnoredDeckId();
 
 			Log.Info("Waiting for game mode detection...");
 			await _game.GameModeDetection();
@@ -176,17 +178,17 @@ namespace Hearthstone_Deck_Tracker
 				SendKeys.SendWait("{" + Config.Instance.KeyPressOnGameEnd + "}");
 				Log.Info("Sent keypress: " + Config.Instance.KeyPressOnGameEnd);
 			}
-			if(!Config.Instance.KeepDecksVisible)
-			{
-				var deck = DeckList.Instance.ActiveDeckVersion;
-				if(deck != null)
-					_game.SetPremadeDeck((Deck)deck.Clone());
-			}
 			if(!_game.IsUsingPremade)
-				_game.DrawnLastGame = new List<Card>(_game.Player.DrawnCards);
+				_game.DrawnLastGame =
+					new List<Card>(_game.Player.RevealedEntities.Where(x => !x.Info.Created && !x.Info.Stolen).GroupBy(x => x.CardId).Select(x =>
+					{
+						var card = Database.GetCardFromId(x.Key);
+						card.Count = x.Count();
+						return card;
+					}));
 
 			if(!Config.Instance.KeepDecksVisible)
-				_game.Reset(false);
+				Core.Reset().Forget();
 			if(_game.CurrentGameMode == Spectator)
 				SetGameMode(None);
 			GameEvents.OnInMenu.Execute();
@@ -319,62 +321,12 @@ namespace Hearthstone_Deck_Tracker
 
 		public void SetPlayerHero(string hero)
 		{
-			try
-			{
-				if(string.IsNullOrEmpty(hero))
-					return;
-				Log.Info("Player=" + hero);
-				_game.Player.Class = hero;
-				if(_game.CurrentGameStats != null)
-					_game.CurrentGameStats.PlayerHero = hero;
-				var selectedDeck = DeckList.Instance.ActiveDeckVersion;
-				if(!_game.IsUsingPremade || !Config.Instance.AutoDeckDetection)
-					return;
-				if(selectedDeck != null && selectedDeck.Class == _game.Player.Class)
-					return;
-				var classDecks = DeckList.Instance.Decks.Where(d => d.Class == _game.Player.Class && !d.Archived).ToList();
-				switch(classDecks.Count)
-				{
-					case 0:
-						Log.Info("Found no deck to switch to");
-						break;
-					case 1:
-						Core.MainWindow.DeckPickerList.SelectDeck(classDecks[0]);
-						Core.MainWindow.DeckPickerList.RefreshDisplayedDecks();
-						Log.Info("Found deck to switch to: " + classDecks[0].Name);
-						break;
-					default:
-						if(DeckList.Instance.LastDeckClass.Any(ldc => ldc.Class == _game.Player.Class))
-						{
-							var lastDeck = DeckList.Instance.LastDeckClass.First(ldc => ldc.Class == _game.Player.Class);
-
-							var deck = lastDeck.Id == Guid.Empty
-										   ? DeckList.Instance.Decks.FirstOrDefault(d => d.Name == lastDeck.Name)
-										   : DeckList.Instance.Decks.FirstOrDefault(d => d.DeckId == lastDeck.Id);
-							if(deck != null && deck.IsArenaRunCompleted != true
-							   && _game.Player.DrawnCardIdsTotal.Distinct().All(id => deck.GetSelectedDeckVersion().Cards.Any(c => id == c.Id)))
-							{
-								Log.Info("Found more than 1 deck to switch to - last played: " + lastDeck.Name);
-								if(deck.Archived)
-								{
-									Log.Info("Deck " + deck.Name + " is archived - waiting for deck selection dialog");
-									return;
-								}
-
-								Core.MainWindow.NeedToIncorrectDeckMessage = false;
-								Core.MainWindow.DeckPickerList.SelectDeck(deck);
-								Core.MainWindow.UpdateDeckList(deck);
-								Core.MainWindow.UseDeck(deck);
-								Core.MainWindow.DeckPickerList.RefreshDisplayedDecks();
-							}
-						}
-						break;
-				}
-			}
-			catch(Exception exception)
-			{
-				Log.Error("Error setting player hero: " + exception);
-			}
+			if(string.IsNullOrEmpty(hero))
+				return;
+			_game.Player.Class = hero;
+			if(_game.CurrentGameStats != null)
+				_game.CurrentGameStats.PlayerHero = hero;
+			Log.Info("Player=" + hero);
 		}
 
 		private readonly Queue<Tuple<ActivePlayer, int>> _turnQueue = new Queue<Tuple<ActivePlayer, int>>();
@@ -395,13 +347,14 @@ namespace Hearthstone_Deck_Tracker
 		{
 			var player = turn.Item1;
 			Log.Info($"--- {player} turn {turn.Item2} ---");
+			if(player == ActivePlayer.Player)
+				HandleThaurissanCostReduction();
 			GameEvents.OnTurnStart.Execute(player);
 			if(_turnQueue.Count > 0)
 				return;
 			if(_game.CurrentGameMode == Casual || _game.CurrentGameMode == None)
 				DetectRanks();
-			TurnTimer.Instance.SetCurrentPlayer(player);
-			TurnTimer.Instance.Restart();
+			TurnTimer.Instance.SetPlayer(player);
 			if(player == ActivePlayer.Player && !_game.IsInMenu)
 			{
 				if(Config.Instance.FlashHsOnTurnStart)
@@ -409,6 +362,20 @@ namespace Hearthstone_Deck_Tracker
 
 				if(Config.Instance.BringHsToForeground)
 					User32.BringHsToForeground();
+			}
+		}
+
+		private void HandleThaurissanCostReduction()
+		{
+			var thaurissan = _game.Opponent.Board.FirstOrDefault(x => x.CardId == HearthDb.CardIds.Collectible.Neutral.EmperorThaurissan);
+			if(thaurissan == null || thaurissan.HasTag(SILENCED))
+				return;
+
+			foreach(var impFavor in _game.Opponent.Board.Where(x => x.CardId == HearthDb.CardIds.NonCollectible.Neutral.ImperialFavorEnchantment))
+			{
+				Entity entity;
+				if(_game.Entities.TryGetValue(impFavor.GetTag(ATTACHED), out entity))
+					entity.Info.CostReduction++;
 			}
 		}
 
@@ -547,6 +514,7 @@ namespace Hearthstone_Deck_Tracker
 			_rankDetectionOverlayToggles = 0;
 			_game.IsInMenu = false;
 			_game.Reset();
+			TurnTimer.Instance.Start(_game).Forget();
 
 			var selectedDeck = DeckList.Instance.ActiveDeckVersion;
 
@@ -562,7 +530,7 @@ namespace Hearthstone_Deck_Tracker
 				Core.MainWindow.SelectDeck(null, true);
 			}
 			else if(selectedDeck != null)
-				_game.SetPremadeDeck((Deck)selectedDeck.Clone());
+				_game.IsUsingPremade = true;
 			GameEvents.OnGameStart.Execute();
 		}
 #pragma warning disable 4014
@@ -619,10 +587,8 @@ namespace Hearthstone_Deck_Tracker
 			if(selectedDeck != null)
 			{
 				if(Config.Instance.DiscardGameIfIncorrectDeck
-				   && !_game.Player.DrawnCards.All(
-				                                   c =>
-				                                   c.IsCreated
-				                                   || selectedDeck.GetSelectedDeckVersion().Cards.Any(c2 => c.Id == c2.Id && c.Count <= c2.Count)))
+				   && !_game.Player.RevealedEntities.Where(x => (x.IsMinion || x.IsSpell || x.IsWeapon) && !x.Info.Created && !x.Info.Stolen)
+				   .GroupBy(x => x.CardId).All(x => selectedDeck.GetSelectedDeckVersion().Cards.Any(c2 => x.Key == c2.Id && x.Count() <= c2.Count)))
 				{
 					if(Config.Instance.AskBeforeDiscardingGame)
 					{
@@ -892,7 +858,7 @@ namespace Hearthstone_Deck_Tracker
 		public void HandlePlayerGetToDeck(Entity entity, string cardId, int turn)
 		{
 			_game.Player.CreateInDeck(entity, turn);
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 			_game.AddPlayToCurrentGame(PlayType.PlayerGetToDeck, turn, cardId);
 			GameEvents.OnPlayerCreateInDeck.Execute(Database.GetCardFromId(cardId));
 		}
@@ -902,7 +868,7 @@ namespace Hearthstone_Deck_Tracker
 			if(string.IsNullOrEmpty(cardId))
 				return;
 			_game.Player.CreateInHand(entity, turn);
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 			_game.AddPlayToCurrentGame(PlayType.PlayerGet, turn, cardId);
 			GameEvents.OnPlayerGet.Execute(Database.GetCardFromId(cardId));
 		}
@@ -911,7 +877,7 @@ namespace Hearthstone_Deck_Tracker
 		{
 			if(string.IsNullOrEmpty(cardId))
 				return;
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 			_game.Player.BoardToHand(entity, turn);
 			_game.AddPlayToCurrentGame(PlayType.PlayerBackToHand, turn, cardId);
 			GameEvents.OnPlayerPlayToHand.Execute(Database.GetCardFromId(cardId));
@@ -926,26 +892,20 @@ namespace Hearthstone_Deck_Tracker
 			else
 			{
 				_game.Player.Draw(entity, turn);
-				Helper.UpdatePlayerCards();
-
-				if(!_game.Player.DrawnCardsMatchDeck && Config.Instance.AutoDeckDetection && !Core.MainWindow.NeedToIncorrectDeckMessage
-				   && !Core.MainWindow.IsShowingIncorrectDeckMessage && _game.IsUsingPremade && _game.CurrentGameMode != Spectator)
-				{
-					Core.MainWindow.NeedToIncorrectDeckMessage = true;
-					Log.Info("Found incorrect deck on PlayerDraw");
-				}
-
+				Core.UpdatePlayerCards();
 				_game.AddPlayToCurrentGame(PlayType.PlayerDraw, turn, cardId);
+				DeckManager.DetectCurrentDeck().Forget();
 			}
 			GameEvents.OnPlayerDraw.Execute(Database.GetCardFromId(cardId));
 		}
+
 
 		public void HandlePlayerMulligan(Entity entity, string cardId)
 		{
 			if(string.IsNullOrEmpty(cardId))
 				return;
 			_game.Player.Mulligan(entity);
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 
 			_game.AddPlayToCurrentGame(PlayType.PlayerMulligan, 0, cardId);
 			GameEvents.OnPlayerMulligan.Execute(Database.GetCardFromId(cardId));
@@ -956,13 +916,16 @@ namespace Hearthstone_Deck_Tracker
 			if(string.IsNullOrEmpty(cardId))
 				return;
 			if(fromDeck)
+			{
 				_game.Player.SecretPlayedFromDeck(entity, turn);
+				DeckManager.DetectCurrentDeck().Forget();
+			}
 			else
 			{
 				_game.Player.SecretPlayedFromHand(entity, turn);
 				HandleSecretsOnPlay(entity);
 			}
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 			_game.AddPlayToCurrentGame(PlayType.PlayerSecretPlayed, turn, cardId);
 			GameEvents.OnPlayerPlay.Execute(Database.GetCardFromId(cardId));
 		}
@@ -972,7 +935,7 @@ namespace Hearthstone_Deck_Tracker
 			if(string.IsNullOrEmpty(cardId))
 				return;
 			_game.Player.HandDiscard(entity, turn);
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 			_game.AddPlayToCurrentGame(PlayType.PlayerHandDiscard, turn, cardId);
 			GameEvents.OnPlayerHandDiscard.Execute(Database.GetCardFromId(cardId));
 		}
@@ -982,7 +945,7 @@ namespace Hearthstone_Deck_Tracker
 			if(string.IsNullOrEmpty(cardId))
 				return;
 			_game.Player.Play(entity, turn);
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 
 			_game.AddPlayToCurrentGame(PlayType.PlayerPlay, turn, cardId);
 			GameEvents.OnPlayerPlay.Execute(Database.GetCardFromId(cardId));
@@ -1021,15 +984,9 @@ namespace Hearthstone_Deck_Tracker
 		public void HandlePlayerDeckDiscard(Entity entity, string cardId, int turn)
 		{
 			_game.Player.DeckDiscard(entity, turn);
-			if(!_game.Player.DrawnCardsMatchDeck && Config.Instance.AutoDeckDetection && !Core.MainWindow.NeedToIncorrectDeckMessage
-			   && !Core.MainWindow.IsShowingIncorrectDeckMessage && _game.IsUsingPremade && _game.CurrentGameMode != Spectator)
-			{
-				Core.MainWindow.NeedToIncorrectDeckMessage = true;
-				Log.Info("Found incorrect deck on PlayerDeckDiscard");
-			}
 			_game.AddPlayToCurrentGame(PlayType.PlayerDeckDiscard, turn, cardId);
-
-			Helper.UpdatePlayerCards();
+			DeckManager.DetectCurrentDeck().Forget();
+			Core.UpdatePlayerCards();
 			GameEvents.OnPlayerDeckDiscard.Execute(Database.GetCardFromId(cardId));
 		}
 
@@ -1039,7 +996,7 @@ namespace Hearthstone_Deck_Tracker
 				return;
 			_game.Player.BoardToDeck(entity, turn);
 
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 
 			_game.AddPlayToCurrentGame(PlayType.PlayerPlayToDeck, turn, cardId);
 			GameEvents.OnPlayerPlayToDeck.Execute(Database.GetCardFromId(cardId));
@@ -1053,7 +1010,7 @@ namespace Hearthstone_Deck_Tracker
 		{
 			_game.Opponent.CreateInDeck(entity, turn);
 			_game.AddPlayToCurrentGame(PlayType.OpponentGetToDeck, turn, string.Empty);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 		}
 
 		public void HandlePlayerRemoveFromPlay(Entity entity, int turn) => _game.Player.RemoveFromPlay(entity, turn);
@@ -1082,45 +1039,38 @@ namespace Hearthstone_Deck_Tracker
 			GameEvents.OnOpponentCreateInPlay.Execute(Database.GetCardFromId(cardId));
 		}
 
-		public void HandleZonePositionUpdate(ActivePlayer player, Entity entity, TAG_ZONE zone, int turn)
-		{
-			if(player == ActivePlayer.Player)
-				_game.Player.UpdateZonePos(entity, zone, turn);
-			else if(player == ActivePlayer.Opponent)
-				_game.Opponent.UpdateZonePos(entity, zone, turn);
-		}
-
 		public void HandlePlayerJoust(Entity entity, string cardId, int turn)
 		{
 			_game.Player.JoustReveal(entity, turn);
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 			GameEvents.OnPlayerJoustReveal.Execute(Database.GetCardFromId(cardId));
 		}
 
 		public void HandlePlayerDeckToPlay(Entity entity, string cardId, int turn)
 		{
 			_game.Player.DeckToPlay(entity, turn);
-			Helper.UpdatePlayerCards();
+			Core.UpdatePlayerCards();
 			GameEvents.OnPlayerDeckToPlay.Execute(Database.GetCardFromId(cardId));
 		}
 
 		public void HandleOpponentDeckToPlay(Entity entity, string cardId, int turn)
 		{
 			_game.Opponent.DeckToPlay(entity, turn);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			GameEvents.OnOpponentDeckToPlay.Execute(Database.GetCardFromId(cardId));
 		}
 
 		public void HandlePlayerRemoveFromDeck(Entity entity, int turn)
 		{
 			_game.Player.RemoveFromDeck(entity, turn);
-			Helper.UpdatePlayerCards();
+			DeckManager.DetectCurrentDeck().Forget();
+			Core.UpdatePlayerCards();
 		}
 
 		public void HandleOpponentRemoveFromDeck(Entity entity, int turn)
 		{
 			_game.Opponent.RemoveFromDeck(entity, turn);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 		}
 
 		public void HandlePlayerStolen(Entity entity, string cardId, int turn)
@@ -1167,7 +1117,7 @@ namespace Hearthstone_Deck_Tracker
 						_game.OpponentSecrets.SetZero(cardId);
 					Core.Overlay.ShowSecrets();
 				}
-				Helper.UpdateOpponentCards();
+				Core.UpdateOpponentCards();
 				_game.AddPlayToCurrentGame(PlayType.OpponentSecretTriggered, turn, cardId);
 				GameEvents.OnOpponentSecretTriggered.Execute(Database.GetCardFromId(cardId));
 			}
@@ -1222,7 +1172,7 @@ namespace Hearthstone_Deck_Tracker
 		public void HandleOpponentPlay(Entity entity, string cardId, int from, int turn)
 		{
 			_game.Opponent.Play(entity, turn);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			_game.AddPlayToCurrentGame(PlayType.OpponentPlay, turn, cardId);
 			GameEvents.OnOpponentPlay.Execute(Database.GetCardFromId(cardId));
 		}
@@ -1231,21 +1181,14 @@ namespace Hearthstone_Deck_Tracker
 		public void HandleOpponentJoust(Entity entity, string cardId, int turn)
 		{
 			_game.Opponent.JoustReveal(entity, turn);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			GameEvents.OnOpponentJoustReveal.Execute(Database.GetCardFromId(cardId));
 		}
 
 		public void HandleOpponentHandDiscard(Entity entity, string cardId, int from, int turn)
 		{
-			try
-			{
-				_game.Opponent.Play(entity, turn);
-			}
-			catch(Exception ex)
-			{
-				Log.Info(ex.ToString());
-			}
-			Helper.UpdateOpponentCards();
+			_game.Opponent.HandDiscard(entity, turn);
+			Core.UpdateOpponentCards();
 			_game.AddPlayToCurrentGame(PlayType.OpponentHandDiscard, turn, cardId);
 			GameEvents.OnOpponentHandDiscard.Execute(Database.GetCardFromId(cardId));
 		}
@@ -1266,9 +1209,11 @@ namespace Hearthstone_Deck_Tracker
 
 		public void HandleOpponentGet(Entity entity, int turn, int id)
 		{
+			if(!_game.IsMulliganDone && entity.GetTag(ZONE_POSITION) == 5)
+				entity.CardId = HearthDb.CardIds.NonCollectible.Neutral.TheCoin;
 			_game.Opponent.CreateInHand(entity, turn);
 			_game.AddPlayToCurrentGame(PlayType.OpponentGet, turn, string.Empty);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			GameEvents.OnOpponentGet.Execute();
 		}
 
@@ -1302,7 +1247,7 @@ namespace Hearthstone_Deck_Tracker
 		public void HandleOpponentPlayToHand(Entity entity, string cardId, int turn, int id)
 		{
 			_game.Opponent.BoardToHand(entity, turn);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			_game.AddPlayToCurrentGame(PlayType.OpponentBackToHand, turn, cardId);
 			GameEvents.OnOpponentPlayToHand.Execute(Database.GetCardFromId(cardId));
 		}
@@ -1312,7 +1257,7 @@ namespace Hearthstone_Deck_Tracker
 		{
 			_game.Opponent.BoardToDeck(entity, turn);
 			_game.AddPlayToCurrentGame(PlayType.OpponentPlayToDeck, turn, cardId);
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			GameEvents.OnOpponentPlayToDeck.Execute(Database.GetCardFromId(cardId));
 		}
 
@@ -1330,7 +1275,7 @@ namespace Hearthstone_Deck_Tracker
 					_game.OpponentSecrets.SetZero(cardId);
 				Core.Overlay.ShowSecrets();
 			}
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			_game.AddPlayToCurrentGame(PlayType.OpponentSecretTriggered, turn, cardId);
 			GameEvents.OnOpponentSecretTriggered.Execute(Database.GetCardFromId(cardId));
 		}
@@ -1341,7 +1286,7 @@ namespace Hearthstone_Deck_Tracker
 
 			//there seems to be an issue with the overlay not updating here.
 			//possibly a problem with order of logs?
-			Helper.UpdateOpponentCards();
+			Core.UpdateOpponentCards();
 			_game.AddPlayToCurrentGame(PlayType.OpponentDeckDiscard, turn, cardId);
 			GameEvents.OnOpponentDeckDiscard.Execute(Database.GetCardFromId(cardId));
 		}

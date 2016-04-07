@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -42,37 +43,34 @@ namespace Hearthstone_Deck_Tracker.Windows
 			{
 				if(border.Equals(BorderStackPanelPlayer))
 				{
-					var scaling = Config.Instance.OverlayPlayerScaling / 100;
 					if(_resizeElement)
 					{
-						Config.Instance.PlayerDeckHeight += delta.Y / Height * scaling;
-						_movableElements[border].Height = Height * Config.Instance.PlayerDeckHeight / 100 * scaling;
+						Config.Instance.PlayerDeckHeight += delta.Y / Height;
+						_movableElements[border].Height = Height * Config.Instance.PlayerDeckHeight / 100;
 						OnPropertyChanged(nameof(OpponentListHeight));
 					}
 					else
 					{
-						Config.Instance.PlayerDeckTop += delta.Y / Height * scaling;
-						Config.Instance.PlayerDeckLeft += delta.X / Width * scaling;
+						Config.Instance.PlayerDeckTop += delta.Y / Height;
+						Config.Instance.PlayerDeckLeft += delta.X / Width;
 						Canvas.SetTop(_movableElements[border], Height * Config.Instance.PlayerDeckTop / 100);
-						Canvas.SetLeft(_movableElements[border],
-									   Width * Config.Instance.PlayerDeckLeft / 100
-									   - StackPanelPlayer.ActualWidth * Config.Instance.OverlayPlayerScaling / 100);
+						Canvas.SetLeft(_movableElements[border], Width * Config.Instance.PlayerDeckLeft / 100 
+										- StackPanelPlayer.ActualWidth * Config.Instance.OverlayPlayerScaling / 100);
 					}
 					return;
 				}
 				if(border.Equals(BorderStackPanelOpponent))
 				{
-					var scaling = Config.Instance.OverlayOpponentScaling / 100;
 					if(_resizeElement)
 					{
-						Config.Instance.OpponentDeckHeight += delta.Y / Height * scaling;
-						_movableElements[border].Height = Height * Config.Instance.OpponentDeckHeight / 100 * scaling;
+						Config.Instance.OpponentDeckHeight += delta.Y / Height;
+						_movableElements[border].Height = Height * Config.Instance.OpponentDeckHeight / 100;
 						OnPropertyChanged(nameof(OpponentListHeight));
 					}
 					else
 					{
-						Config.Instance.OpponentDeckTop += delta.Y / Height * scaling;
-						Config.Instance.OpponentDeckLeft += delta.X / Width * scaling;
+						Config.Instance.OpponentDeckTop += delta.Y / Height;
+						Config.Instance.OpponentDeckLeft += delta.X / Width;
 						Canvas.SetTop(_movableElements[border], Height * Config.Instance.OpponentDeckTop / 100);
 						Canvas.SetLeft(_movableElements[border], Width * Config.Instance.OpponentDeckLeft / 100);
 					}
@@ -221,7 +219,6 @@ namespace Hearthstone_Deck_Tracker.Windows
 								Config.Instance.Reset("PlayerDeckHeight");
 								TrySetResizeGripHeight(movableElement.Value, Config.Instance.PlayerDeckHeight * Height / 100);
 							}
-							movableElement.Value.Height *= Config.Instance.OverlayPlayerScaling / 100;
 							movableElement.Value.Width = elementSize.Width > 0 ? elementSize.Width * Config.Instance.OverlayPlayerScaling/100 : 0;
 						}
 						else if (movableElement.Key == BorderStackPanelOpponent)
@@ -231,7 +228,6 @@ namespace Hearthstone_Deck_Tracker.Windows
 								Config.Instance.Reset("OpponentDeckHeight");
 								TrySetResizeGripHeight(movableElement.Value, Config.Instance.OpponentDeckHeight * Height / 100);
 							}
-							movableElement.Value.Height *= Config.Instance.OverlayOpponentScaling / 100;
 							movableElement.Value.Width = elementSize.Width > 0 ? elementSize.Width * Config.Instance.OverlayOpponentScaling / 100 : 0;
 						}
 						else if(movableElement.Key == StackPanelSecrets)
@@ -328,56 +324,54 @@ namespace Hearthstone_Deck_Tracker.Windows
 
 		private async void HideCardsWhenFriendsListOpen(Point clickPos)
 		{
-			var panels = new List<StackPanel>();
-			if (Canvas.GetLeft(StackPanelPlayer) - 200 < 500)
-				panels.Add(StackPanelPlayer);
-			if (Canvas.GetLeft(StackPanelOpponent) < 500)
-				panels.Add(StackPanelOpponent);
+			var panels = new List<Border>();
+			if (Canvas.GetLeft(BorderStackPanelPlayer) - 200 < 500)
+				panels.Add(BorderStackPanelPlayer);
+			if (Canvas.GetLeft(BorderStackPanelOpponent) < 500)
+				panels.Add(BorderStackPanelOpponent);
 
 			_isFriendsListOpen = null;
-			if (panels.Count > 0 && !Config.Instance.HideDecksInOverlay)
+			if(Config.Instance.HideDecksInOverlay)
+				return;
+			foreach (var panel in panels)
 			{
-				foreach (var panel in panels)
+				//if panel visible, only continue of click was in the button left corner
+				if (!(clickPos.X < 150 && clickPos.Y > Height - 100) && panel.Visibility == Visibility.Visible)
+					continue;
+
+				var checkForFriendsList = true;
+				if (panel.Equals(BorderStackPanelPlayer) && Config.Instance.HidePlayerCards)
+					checkForFriendsList = false;
+				else if (panel.Equals(BorderStackPanelOpponent) && Config.Instance.HideOpponentCards)
+					checkForFriendsList = false;
+				if(!checkForFriendsList)
+					continue;
+				if (_isFriendsListOpen == null)
+					_isFriendsListOpen = await Helper.FriendsListOpen();
+				if (_isFriendsListOpen.Value)
 				{
-					//if panel visible, only continue of click was in the button left corner
-					if (!(clickPos.X < 150 && clickPos.Y > Height - 100) && panel.Visibility == Visibility.Visible)
-						continue;
-
-					var checkForFriendsList = true;
-					if (panel.Equals(StackPanelPlayer) && Config.Instance.HidePlayerCards)
-						checkForFriendsList = false;
-					else if (panel.Equals(StackPanelOpponent) && Config.Instance.HideOpponentCards)
-						checkForFriendsList = false;
-
-					if (checkForFriendsList)
+					var childPanel = Helper.FindVisualChildren<StackPanel>(panel).FirstOrDefault();
+					var needToHide = childPanel != null && Canvas.GetTop(panel) + childPanel.ActualHeight > Height * 0.3;
+					if (needToHide)
 					{
-						if (_isFriendsListOpen == null)
-							_isFriendsListOpen = await Helper.FriendsListOpen();
-						if (_isFriendsListOpen.Value)
-						{
-							var needToHide = Canvas.GetTop(panel) + panel.ActualHeight > Height * 0.3;
-							if (needToHide)
-							{
-								var isPlayerPanel = panel.Equals(StackPanelPlayer);
-								Log.Info("Friendslist is open! Hiding " + (isPlayerPanel ? "player" : "opponent") + " panel.");
-								panel.Visibility = Visibility.Collapsed;
-								if (isPlayerPanel)
-									_playerCardsHidden = true;
-								else
-									_opponentCardsHidden = true;
-							}
-						}
-						else if (panel.Visibility == Visibility.Collapsed)
-						{
-							if (!(_game.IsInMenu && Config.Instance.HideInMenu))
-							{
-								panel.Visibility = Visibility.Visible;
-								if (panel.Equals(StackPanelPlayer))
-									_playerCardsHidden = false;
-								else
-									_opponentCardsHidden = false;
-							}
-						}
+						var isPlayerPanel = panel.Equals(BorderStackPanelPlayer);
+						Log.Info("Friendslist is open! Hiding " + (isPlayerPanel ? "player" : "opponent") + " panel.");
+						panel.Visibility = Visibility.Collapsed;
+						if (isPlayerPanel)
+							_playerCardsHidden = true;
+						else
+							_opponentCardsHidden = true;
+					}
+				}
+				else if (panel.Visibility == Visibility.Collapsed)
+				{
+					if (!(_game.IsInMenu && Config.Instance.HideInMenu))
+					{
+						panel.Visibility = Visibility.Visible;
+						if (panel.Equals(BorderStackPanelPlayer))
+							_playerCardsHidden = false;
+						else
+							_opponentCardsHidden = false;
 					}
 				}
 			}

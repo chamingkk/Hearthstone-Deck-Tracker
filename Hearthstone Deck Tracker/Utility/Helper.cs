@@ -19,6 +19,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using HearthDb.Enums;
 using Hearthstone_Deck_Tracker.Controls;
 using Hearthstone_Deck_Tracker.Enums;
 using Hearthstone_Deck_Tracker.FlyoutControls;
@@ -80,6 +81,8 @@ namespace Hearthstone_Deck_Tracker
 			"esMX",
 			"esES"
 		};
+
+		public static string[] WildOnlySets = new[] { CardSet.FP1, CardSet.PE1 }.Select(HearthDbConverter.SetConverter).ToArray();
 
 		private static Version _currentVersion;
 
@@ -307,19 +310,12 @@ namespace Hearthstone_Deck_Tracker
 			if(Core.Overlay.IsVisible)
 				Core.Overlay.Update(false);
 
+			var gameStarted = !game.IsInMenu && game.Entities.Count >= 67;
 			if(Core.Windows.PlayerWindow.IsVisible)
-				Core.Windows.PlayerWindow.SetCardCount(game.Player.HandCount, game.Player.DeckCount);
+				Core.Windows.PlayerWindow.SetCardCount(game.Player.HandCount, !gameStarted ? 30 : game.Player.DeckCount);
 
 			if(Core.Windows.OpponentWindow.IsVisible)
-				Core.Windows.OpponentWindow.SetOpponentCardCount(game.Opponent.HandCount, game.Opponent.DeckCount, game.Opponent.HasCoin);
-
-
-			if(Core.MainWindow.NeedToIncorrectDeckMessage && !Core.MainWindow.IsShowingIncorrectDeckMessage
-			   && game.CurrentGameMode != GameMode.Spectator && game.IgnoreIncorrectDeck != DeckList.Instance.ActiveDeck)
-			{
-				Core.MainWindow.IsShowingIncorrectDeckMessage = true;
-				Core.MainWindow.ShowIncorrectDeckMessage();
-			}
+				Core.Windows.OpponentWindow.SetOpponentCardCount(game.Opponent.HandCount, !gameStarted ? 30 : game.Opponent.DeckCount, game.Opponent.HasCoin);
 		}
 
 		//http://stackoverflow.com/questions/23927702/move-a-folder-from-one-drive-to-another-in-c-sharp
@@ -429,18 +425,6 @@ namespace Hearthstone_Deck_Tracker
 			{
 				return template;
 			}
-		}
-
-		public static void UpdatePlayerCards(bool reset = false)
-		{
-			Core.Overlay.UpdatePlayerCards(reset);
-			Core.Windows.PlayerWindow.UpdatePlayerCards(reset);
-		}
-
-		public static void UpdateOpponentCards(bool reset = false)
-		{
-			Core.Overlay.UpdateOpponentCards(reset);
-			Core.Windows.OpponentWindow.UpdateOpponentCards(reset);
 		}
 
 		public static async Task StartHearthstoneAsync()

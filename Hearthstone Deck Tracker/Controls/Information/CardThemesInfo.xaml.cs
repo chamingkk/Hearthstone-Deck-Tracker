@@ -2,12 +2,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using Hearthstone_Deck_Tracker.Annotations;
 using Hearthstone_Deck_Tracker.Hearthstone;
 using Hearthstone_Deck_Tracker.Utility.Extensions;
 using Hearthstone_Deck_Tracker.Utility.Themes;
@@ -20,7 +22,7 @@ namespace Hearthstone_Deck_Tracker.Controls.Information
 	/// <summary>
 	/// Interaction logic for CardThemesInfo.xaml
 	/// </summary>
-	public partial class CardThemesInfo : UserControl
+	public partial class CardThemesInfo : INotifyPropertyChanged
 	{
 		private readonly List<Hearthstone.Card> _cards = new List<Hearthstone.Card>();
 		private bool _update = true;
@@ -44,10 +46,47 @@ namespace Hearthstone_Deck_Tracker.Controls.Information
 		}
 
 		public Hearthstone.Card Card => Database.GetCardFromId(CardIds.Collectible.Neutral.RagnarosTheFirelord);
-		public ImageBrush ClassicCard => GetBarImageBuilder(ThemeManager.Themes.First(x => x.Name == "classic"), Card).Build();
-		public ImageBrush MinimalCard => GetBarImageBuilder(ThemeManager.Themes.First(x => x.Name == "minimal"), Card).Build();
-		public ImageBrush DarkCard => GetBarImageBuilder(ThemeManager.Themes.First(x => x.Name == "dark"), Card).Build();
-		public ImageBrush LightCard => GetBarImageBuilder(ThemeManager.Themes.First(x => x.Name == "light"), Card).Build();
+		public ImageBrush ClassicCard => GetCardImage("classic");
+		public ImageBrush MinimalCard => GetCardImage("minimal");
+		public ImageBrush DarkCard => GetCardImage("dark");
+		public ImageBrush FrostCard => GetCardImage("frost");
+
+		public ImageBrush GetCardImage(string themeName)
+		{
+			var theme = ThemeManager.Themes.FirstOrDefault(x => x.Name == themeName);
+			if(theme == null)
+				return new ImageBrush();
+			var buildType = theme.BuildType ?? typeof(DefaultBarImageBuilder);
+			return ((CardBarImageBuilder)Activator.CreateInstance(buildType, Card, theme.Directory)).Build();
+		}
+
+		public bool RarityGems
+		{
+			get { return Config.Instance.RarityCardGems; }
+			set
+			{
+				Config.Instance.RarityCardGems = value;
+				UpdateCards();
+				OnPropertyChanged(nameof(ClassicCard));
+				OnPropertyChanged(nameof(MinimalCard));
+				OnPropertyChanged(nameof(DarkCard));
+				OnPropertyChanged(nameof(FrostCard));
+			}
+		}
+
+		public bool RarityFrames
+		{
+			get { return Config.Instance.RarityCardFrames; }
+			set
+			{
+				Config.Instance.RarityCardFrames = value;
+				UpdateCards();
+				OnPropertyChanged(nameof(ClassicCard));
+				OnPropertyChanged(nameof(MinimalCard));
+				OnPropertyChanged(nameof(DarkCard));
+				OnPropertyChanged(nameof(FrostCard));
+			}
+		}
 
 		private async void UpdateAnimatedCardListAsync()
 		{
@@ -59,7 +98,7 @@ namespace Hearthstone_Deck_Tracker.Controls.Information
 				else
 					card.Count++;
 			}
-			AnimatedCardList.Update(_cards.ToSortedCardList().Select(x => (Hearthstone.Card)x.Clone()).ToList(), true, true);
+			AnimatedCardList.Update(_cards.ToSortedCardList().Select(x => (Hearthstone.Card)x.Clone()).ToList(), true);
 			while(_update)
 			{
 				foreach(var cardId in _demoCards)
@@ -75,7 +114,7 @@ namespace Hearthstone_Deck_Tracker.Controls.Information
 						else
 							card.Count--;
 					}
-					AnimatedCardList.Update(_cards.ToSortedCardList().Select(x => (Hearthstone.Card)x.Clone()).ToList(), false, false);
+					AnimatedCardList.Update(_cards.ToSortedCardList().Select(x => (Hearthstone.Card)x.Clone()).ToList(), false);
 				}
 				foreach(var cardId in _demoCards)
 				{
@@ -87,15 +126,9 @@ namespace Hearthstone_Deck_Tracker.Controls.Information
 						_cards.Add(Database.GetCardFromId(cardId));
 					else
 						card.Count++;
-					AnimatedCardList.Update(_cards.ToSortedCardList().Select(x => (Hearthstone.Card)x.Clone()).ToList(), true, false);
+					AnimatedCardList.Update(_cards.ToSortedCardList().Select(x => (Hearthstone.Card)x.Clone()).ToList(), false);
 				}
 			}
-		}
-
-		public static CardBarImageBuilder GetBarImageBuilder(Theme theme, Hearthstone.Card card)
-		{
-			var buildType = theme.BuildType ?? typeof(DefaultBarImageBuilder);
-			return (CardBarImageBuilder)Activator.CreateInstance(buildType, card, theme.Directory);
 		}
 
 		private void ToggleButton_OnChecked(object sender, RoutedEventArgs e)
@@ -104,7 +137,16 @@ namespace Hearthstone_Deck_Tracker.Controls.Information
 				return;
 			var tb = sender as ToggleButton;
 			if(tb != null)
-				ThemeManager.SetTheme(tb.Content.ToString().ToLower());
+			{
+				var theme = tb.Content.ToString().ToLower();
+				ThemeManager.SetTheme(theme);
+				Config.Instance.CardBarTheme = theme;
+			}
+			UpdateCards();
+		}
+
+		private void UpdateCards()
+		{
 			foreach(var card in AnimatedCardList.Items.Cast<AnimatedCard>().Select(x => x.Card))
 			{
 				card.UpdateHighlight();
@@ -112,6 +154,18 @@ namespace Hearthstone_Deck_Tracker.Controls.Information
 			}
 		}
 
-		private void CardThemesInfo_OnUnloaded(object sender, RoutedEventArgs e) => _update = false;
+		private void CardThemesInfo_OnUnloaded(object sender, RoutedEventArgs e)
+		{
+			_update = false;
+			Config.Save();
+		}
+
+		public event PropertyChangedEventHandler PropertyChanged;
+
+		[NotifyPropertyChangedInvocator]
+		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+		{
+			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+		}
 	}
 }

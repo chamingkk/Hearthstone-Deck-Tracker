@@ -20,7 +20,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 {
 	public class GameV2 : IGame
 	{
-		public readonly List<Deck> DiscardedArenaDecks = new List<Deck>();
+		public readonly List<Deck> IgnoredArenaDecks = new List<Deck>();
 		private bool _awaitingMainWindowOpen;
 		private GameMode _currentGameMode;
 		private bool _gameModeDetectionComplete;
@@ -33,8 +33,6 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		{
 			Player = new Player(true);
 			Opponent = new Player(false);
-
-			Entities = new Dictionary<int, Entity>();
 			CurrentGameMode = GameMode.None;
 			IsInMenu = true;
 			PossibleArenaCards = new List<Card>();
@@ -56,7 +54,6 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 
 		public Player Player { get; set; }
 		public Player Opponent { get; set; }
-		public bool NoMatchingDeck { get; set; }
 		public bool IsInMenu { get; set; }
 		public bool IsUsingPremade { get; set; }
 		public int OpponentSecretCount { get; set; }
@@ -67,7 +64,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		public List<Card> DrawnLastGame { get; set; }
 		public List<Card> PossibleArenaCards { get; set; }
 		public List<Card> PossibleConstructedCards { get; set; }
-		public Dictionary<int, Entity> Entities { get; set; }
+		public Dictionary<int, Entity> Entities { get; } = new Dictionary<int, Entity>();
 		public GameMetaData MetaData { get; } = new GameMetaData();
 		internal List<Tuple<string, List<string>>> StoredPowerLogs { get; } = new List<Tuple<string, List<string>>>();
 		internal Dictionary<int, string> StoredPlayerNames { get; } = new Dictionary<int, string>();
@@ -131,7 +128,6 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 			SavedReplay = false;
 			OpponentSecretCount = 0;
 			OpponentSecrets.ClearSecrets();
-			NoMatchingDeck = false;
 
 			if(!IsInMenu && resetStats)
 			{
@@ -147,20 +143,9 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 
 			if(Core.Game != null && Core.Overlay != null)
 			{
-				Helper.UpdatePlayerCards(true);
-				Helper.UpdateOpponentCards(true);
-				Core.MainWindow.NeedToIncorrectDeckMessage = false;
+				Core.UpdatePlayerCards(true);
+				Core.UpdateOpponentCards(true);
 			}
-		}
-
-		public void SetPremadeDeck(Deck deck)
-		{
-			foreach(var card in deck.GetSelectedDeckVersion().Cards)
-			{
-				for(var i = 0; i < card.Count; i++)
-					Player.RevealDeckCard(card.Id, -1);
-			}
-			IsUsingPremade = true;
 		}
 
 		public void AddPlayToCurrentGame(PlayType play, int turn, string cardId) => CurrentGameStats?.AddPlay(play, turn, cardId);
@@ -256,7 +241,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 					TempArenaDeck.Cards.Clear();
 					return;
 				}
-				if(DiscardedArenaDecks.Any(d => d.Cards.All(c => TempArenaDeck.Cards.Any(c2 => c.Id == c2.Id && c.Count == c2.Count))))
+				if(IgnoredArenaDecks.Any(d => d.Cards.All(c => TempArenaDeck.Cards.Any(c2 => c.Id == c2.Id && c.Count == c2.Count))))
 				{
 					Log.Info("...but it was already discarded by the user. No automatic action taken.");
 					return;
@@ -302,10 +287,8 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 				Core.MainWindow.ActivateWindow();
 			}
 			else
-			{
 				Log.Info("...discarded by user.");
-				DiscardedArenaDecks.Add(deck);
-			}
+			IgnoredArenaDecks.Add(deck);
 			_awaitingMainWindowOpen = false;
 		}
 

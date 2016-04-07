@@ -130,8 +130,8 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(IconStyle.Round)]
 		public IconStyle ClassIconStyle = IconStyle.Round;
 
-		[DefaultValue("classic")]
-		public string CardBarTheme = "classic";
+		[DefaultValue("dark")]
+		public string CardBarTheme = "dark";
 
 		[DefaultValue(true)]
 		public bool ClearLogFileAfterGame = true;
@@ -168,6 +168,9 @@ namespace Hearthstone_Deck_Tracker
 
 		[DefaultValue(DeckLayout.Layout1)]
 		public DeckLayout DeckPickerItemLayout = DeckLayout.Layout1;
+
+		[DefaultValue(true)]
+		public bool DeckPickerWildIncludesStandard = true;
 
 		[DefaultValue(false)]
 		public bool DeckImportAutoDetectCardCount = false;
@@ -479,8 +482,8 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(0.5)]
 		public double OpponentDeckLeft = 0.5;
 
-		[DefaultValue(10)]
-		public double OpponentDeckTop = 10;
+		[DefaultValue(12.5)]
+		public double OpponentDeckTop = 12.5;
 
 		[DefaultValue(100)]
 		public double OpponentOpacity = 100;
@@ -501,6 +504,9 @@ namespace Hearthstone_Deck_Tracker
 		public bool OverlayCardAnimations = true;
 
 		[DefaultValue(true)]
+		public bool OverlayCardAnimationsOpacity = true;
+
+		[DefaultValue(true)]
 		public bool OverlayCardMarkToolTips = true;
 
 		[DefaultValue(true)]
@@ -518,11 +524,11 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(100)]
 		public double OverlayPlayerScaling = 100;
 
-		[DefaultValue(true)]
-		public bool OverlayCenterPlayerStackPanel = true;
+		[DefaultValue(false)]
+		public bool OverlayCenterPlayerStackPanel = false;
 
-		[DefaultValue(true)]
-		public bool OverlayCenterOpponentStackPanel = true;
+		[DefaultValue(false)]
+		public bool OverlayCenterOpponentStackPanel = false;
 
 		[DefaultValue(false)]
 		public bool OverlaySecretToolTipsOnly = false;
@@ -566,11 +572,11 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(true)]
 		public bool PrioritizeGolden = true;
 
-		[DefaultValue(true)]
-		public bool RarityCardFrames = true;
+		[DefaultValue(false)]
+		public bool RarityCardFrames = false;
 
-		[DefaultValue(true)]
-		public bool RarityCardGems = true;
+		[DefaultValue(false)]
+		public bool RarityCardGems = false;
 
 		[DefaultValue(true)]
 		public bool RecordArena = true;
@@ -584,8 +590,8 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(false)]
 		public bool RecordOther = false;
 
-		[DefaultValue(false)]
-		public bool RecordBrawl = false;
+		[DefaultValue(true)]
+		public bool RecordBrawl = true;
 
 		[DefaultValue(false)]
 		public bool RecordPractice = false;
@@ -860,20 +866,17 @@ namespace Hearthstone_Deck_Tracker
 		[DefaultValue(150)]
 		public int TimerWindowWidth = 150;
 
-		[DefaultValue(80)]
-		public double TimersHorizontalPosition = 80;
+		[DefaultValue(72)]
+		public double TimersHorizontalPosition = 72;
 
-		[DefaultValue(0)]
-		public double TimersHorizontalSpacing = 0;
+		[DefaultValue(48)]
+		public double TimersHorizontalSpacing = 48;
 
-		[DefaultValue(43.5)]
-		public double TimersVerticalPosition = 43.5;
+		[DefaultValue(44.5)]
+		public double TimersVerticalPosition = 44.5;
 
-		[DefaultValue(50)]
-		public double TimersVerticalSpacing = 50;
-
-		[DefaultValue(90)]
-		public int TimerTurnTime = 90;
+		[DefaultValue(42)]
+		public double TimersVerticalSpacing = 42;
 
 		[DefaultValue(true)]
 		public bool TrackerCardToolTips = true;
