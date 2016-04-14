@@ -7,7 +7,7 @@ using Hearthstone_Deck_Tracker.Hearthstone;
 
 namespace Hearthstone_Deck_Tracker.Utility.Themes
 {
-	public static class ThemeManager
+	public class ThemeManager
 	{
 		private const string ThemeDir = @"Images\Themes\Bars";
 		private const string ThemeRegex = @"[a-zA-Z]+";
@@ -35,7 +35,7 @@ namespace Hearthstone_Deck_Tracker.Utility.Themes
 					Logging.Log.Warn($"Invalid theme directory name {di.Name}");
 				}
 			}
-			CurrentTheme = FindTheme(Config.Instance.CardBarTheme);
+			CurrentTheme = FindTheme(Config.Instance.CardBarTheme) ?? Themes.FirstOrDefault();
 		}
 
 		public static Theme FindTheme(string name)
@@ -47,14 +47,22 @@ namespace Hearthstone_Deck_Tracker.Utility.Themes
 			if(t == null)
 				return;
 			CurrentTheme = t;
-			Helper.UpdatePlayerCards(true);
-			Helper.UpdateOpponentCards(true);
+			UpdateCards();
+		}
+
+		public static void UpdateCards()
+		{
+			Core.UpdatePlayerCards(true);
+			Core.UpdateOpponentCards(true);
 			Core.Overlay.PlayerDeck.ForEach(c => c.UpdateHighlight());
 			Core.Overlay.OpponentDeck.ForEach(c => c.UpdateHighlight());
 			Core.Windows.PlayerWindow.PlayerDeck.ForEach(c => c.UpdateHighlight());
 			Core.Windows.OpponentWindow.OpponentDeck.ForEach(c => c.UpdateHighlight());
 			foreach(var card in Core.MainWindow.ListViewDeck.Items.Cast<Card>())
 				card.Update();
+			Core.Windows.PlayerWindow.UpdateCardFrames();
+			Core.Windows.OpponentWindow.UpdateCardFrames();
+			Core.Overlay.UpdateCardFrames();
 		}
 
 		public static CardBarImageBuilder GetBarImageBuilder(Card card)

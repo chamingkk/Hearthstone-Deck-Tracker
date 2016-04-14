@@ -32,10 +32,10 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		private bool _isCreated;
 		private bool _loaded;
 		private string _localizedName;
-		private string _name;
 		private int? _overload;
 		private string _text;
 		private bool _wasDiscarded;
+		private string _id;
 
 		[NonSerialized]
 		private static readonly Dictionary<string, Dictionary<int, CardImageObject>> CardImageCache =
@@ -47,7 +47,16 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		[XmlIgnore]
 		public List<string> AlternativeTexts = new List<string>();
 
-		public string Id;
+		public string Id
+		{
+			get { return _id; }
+			set
+			{
+				_id = value;
+				if(_dbCard == null)
+					Load();
+			}
+		}
 
 		/// The mechanics attribute, such as windfury or taunt, comes from the cardDB json file
 		[XmlIgnore]
@@ -222,16 +231,7 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		public string Type { get; set; }
 
 		[XmlIgnore]
-		public string Name
-		{
-			get
-			{
-				if(_name == null)
-					Load();
-				return _name;
-			}
-			set { _name = value; }
-		}
+		public string Name { get; set; }
 
 		[XmlIgnore]
 		public int Cost { get; set; }
@@ -471,8 +471,10 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 	{
 		public ImageBrush Image { get; }
 		public int Count { get; }
+		public bool Jousted { get; }
 		public bool ColoredFrame { get; }
 		public bool ColoredGem { get; }
+		public bool Created { get; }
 		public string Theme { get; }
 		public int TextColorHash { get; }
 
@@ -484,10 +486,12 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		public CardImageObject(Card card)
 		{
 			Count = card.Count;
+			Jousted = card.Jousted;
 			ColoredFrame = Config.Instance.RarityCardFrames;
 			ColoredGem = Config.Instance.RarityCardGems;
 			Theme = ThemeManager.CurrentTheme?.Name;
 			TextColorHash = card.ColorPlayer.Color.GetHashCode();
+			Created = card.IsCreated;
 		}
 
 		public override bool Equals(object obj)
@@ -497,18 +501,20 @@ namespace Hearthstone_Deck_Tracker.Hearthstone
 		}
 
 		protected bool Equals(CardImageObject other)
-			=> Count == other.Count && ColoredFrame == other.ColoredFrame && ColoredGem == other.ColoredGem
-				&& string.Equals(Theme, other.Theme) && TextColorHash == other.TextColorHash;
+			=> Count == other.Count && Jousted == other.Jousted && ColoredFrame == other.ColoredFrame && ColoredGem == other.ColoredGem
+				&& string.Equals(Theme, other.Theme) && TextColorHash == other.TextColorHash && Created == other.Created;
 
 		public override int GetHashCode()
 		{
 			unchecked
 			{
 				var hashCode = Count;
+				hashCode = (hashCode * 397) ^ Jousted.GetHashCode();
 				hashCode = (hashCode * 397) ^ ColoredFrame.GetHashCode();
 				hashCode = (hashCode * 397) ^ ColoredGem.GetHashCode();
 				hashCode = (hashCode * 397) ^ (Theme?.GetHashCode() ?? 0);
 				hashCode = (hashCode * 397) ^ TextColorHash;
+				hashCode = (hashCode * 397) ^ Created.GetHashCode();
 				return hashCode;
 			}
 		}
